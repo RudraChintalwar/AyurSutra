@@ -137,3 +137,32 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+.venv
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Legacy Source Directories (Migrated to Monorepo)
+AyurSutra_Final_Do_Not_Delete_SIH25/
+CureConnect-EMart/
+ML/
+ayur-flow-lab/
+
+# Build Outputs
+dist/
+dist-ssr/
+build/
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

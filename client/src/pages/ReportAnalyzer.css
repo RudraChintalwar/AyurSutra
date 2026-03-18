@@ -1,0 +1,490 @@
+﻿/* ðŸŒ¿ Ayurvedic Report Analyzer Theme - Green & Brown */
+
+/* ===================== Layout ===================== */
+.report-analyzer-container {
+  max-width: 1100px;
+  margin: 1rem auto;
+  padding: 2rem;
+  background-color: #fffdf8;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  position: relative;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* ===================== Background Effects ===================== */
+.ra-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.ra-bg-element {
+  position: absolute;
+  font-size: 2rem;
+  opacity: 0.08;
+  color: #6b4226; /* earthy brown */
+}
+
+.ra-bg-1 { top: 5%; left: 10%; }
+.ra-bg-2 { top: 20%; right: 15%; }
+.ra-bg-3 { bottom: 20%; left: 20%; }
+.ra-bg-4 { bottom: 10%; right: 25%; }
+.ra-bg-5 { top: 50%; left: 45%; }
+
+/* ===================== Header ===================== */
+.ra-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.ra-back-btn {
+  background: none;
+  border: none;
+  color: #4a7c3a;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.ra-title-section {
+  text-align: center;
+}
+
+.ra-main-title {
+  font-size: 2rem;
+  color: #4a7c3a; /* herbal green */
+  margin: 0;
+}
+
+.ra-subtitle {
+  font-size: 1rem;
+  color: #7a6f5a; /* muted brown */
+}
+
+.ra-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: bold;
+  color: #4a7c3a;
+}
+
+.ra-logo-icon {
+  font-size: 1.5rem;
+}
+
+.ra-logo-text {
+  font-size: 1.1rem;
+}
+
+/* ===================== Content ===================== */
+.ra-content {
+  position: relative;
+  z-index: 2;
+}
+
+/* ===================== Upload Section ===================== */
+.ra-upload-section {
+  display: flex;
+  justify-content: center;
+}
+
+.ra-upload-card {
+  background: #fffdf8;
+  border: 1px solid #e4d7c5;
+  border-radius: 10px;
+  padding: 2rem;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 3;
+}
+
+.ra-upload-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.ra-upload-title {
+  font-size: 1.5rem;
+  margin: 1rem 0 0.5rem;
+  color: #4a7c3a;
+}
+
+.ra-upload-description {
+  font-size: 0.95rem;
+  color: #6b4226;
+  margin-bottom: 1.5rem;
+}
+
+.ra-drop-zone {
+  border: 2px dashed #a89f91;
+  border-radius: 10px;
+  padding: 2rem;
+  cursor: pointer;
+  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+  background: #faf8f5;
+}
+
+.ra-drop-zone:hover,
+.ra-drop-zone-active {
+  background: #f2ede7;
+  border-color: #4a7c3a;
+}
+
+.ra-drop-zone-has-file {
+  border-style: solid;
+  background: #f8fdf9;
+}
+
+.ra-drop-content {
+  position: relative;
+  z-index: 1;
+}
+
+.ra-drop-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.ra-drop-title {
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
+  color: #4a7c3a;
+}
+
+.ra-drop-subtitle {
+  color: #6b4226;
+  margin: 0.5rem 0 1rem;
+}
+
+.ra-browse-btn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #6b4226;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ra-browse-btn:hover {
+  background: #4a2f1e;
+}
+
+.ra-file-info {
+  margin: 1rem 0;
+}
+
+.ra-file-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #f6f2ee;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #e0d4c7;
+}
+
+.ra-file-icon {
+  font-size: 1.2rem;
+}
+
+.ra-file-text {
+  flex: 1;
+  text-align: left;
+}
+
+.ra-file-name {
+  font-weight: 500;
+  color: #4a7c3a;
+  margin: 0;
+}
+
+.ra-file-size {
+  font-size: 0.9rem;
+  color: #6b4226;
+  margin: 0;
+}
+
+.ra-remove-file {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #b3261e;
+  padding: 0.25rem;
+}
+
+.ra-remove-file:hover {
+  background: rgba(179, 38, 30, 0.1);
+  border-radius: 3px;
+}
+
+/* ===================== Error Message ===================== */
+.ra-error-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #fff0f0;
+  color: #b3261e;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin: 1rem 0;
+  border: 1px solid #f2c5c5;
+}
+
+.ra-error-icon {
+  font-size: 1.1rem;
+}
+
+/* ===================== Buttons - CRITICAL FIX ===================== */
+.ra-analyze-btn {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #4a7c3a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  min-height: 44px;
+}
+
+.ra-analyze-btn:hover:not(:disabled) {
+  background: #3b5f2f;
+}
+
+.ra-analyze-btn:disabled {
+  background: #bcd3b2;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.ra-analyze-btn:active {
+  transform: translateY(1px);
+}
+
+.ra-analyze-icon {
+  font-size: 1.1rem;
+}
+
+.ra-loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
+  margin-right: 0.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===================== Features ===================== */
+.ra-features {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: #6b4226;
+}
+
+.ra-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ra-feature-icon {
+  font-size: 1rem;
+}
+
+/* ===================== Results ===================== */
+.ra-results-section {
+  position: relative;
+  z-index: 2;
+}
+
+.ra-results-card {
+  background: #fffdf8;
+  border: 1px solid #e4d7c5;
+  border-radius: 10px;
+  padding: 1.5rem;
+}
+
+.ra-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.ra-results-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.5rem;
+}
+
+.ra-results-title h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: #4a7c3a;
+}
+
+.ra-results-title p {
+  margin: 0.25rem 0 0;
+  color: #6b4226;
+  font-size: 0.9rem;
+}
+
+.ra-new-analysis {
+  background: #f2ede7;
+  color: #6b4226;
+  border: 1px solid #e4d7c5;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.ra-new-analysis:hover {
+  background: #e8e0d7;
+}
+
+.ra-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.ra-analysis-card {
+  background: #f8fdf9;
+  border: 1px solid #d6e9d0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.ra-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #4a7c3a;
+}
+
+.ra-card-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ra-card-icon {
+  font-size: 1.2rem;
+}
+
+.ra-card-content {
+  color: #6b4226;
+  line-height: 1.5;
+}
+
+.ra-dosha-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #6b4226;
+  margin: 0;
+}
+
+.ra-lifestyle-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ra-lifestyle-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #6b4226;
+  font-size: 0.9rem;
+}
+
+.ra-list-icon {
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+}
+
+/* ===================== Practitioners ===================== */
+.ra-practitioners-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ra-practitioner-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid #e4d7c5;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  gap: 1rem;
+}
+
+.ra-practitioner-avatar {
+  font-size: 1.5rem;
+}
+
+.ra-practitioner-details {
+  flex: 1;
+}
+
+.ra-practitioner-details h4 {
+  margin: 0;
+  color: #4a7c3a;
+  font-size: 0.95rem;
+}
+
+.ra-practitioner-specialty,
+.ra-practitioner-location {
+  font-size: 0.85rem;
+  color: #6b4226;
+  margin: 0.25rem 0 0;
+}
+
+.ra-book-consultation {
+  padding: 0.4rem 0.75rem;
+  background: #6b4226;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
