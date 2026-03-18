@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Progress as ProgressBar } from '@/components/ui/progress';
 import { 
   TrendingUp,
   Calendar,
@@ -10,41 +10,75 @@ import {
   Target,
   Clock
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar } from 'recharts';
 
 const ProgressPage = () => {
-  const { role } = useAuth();
-  const currentPatientId = 'p1'; // Simulate logged in as Asha Nair
-  const currentPatient = mockData.patients.find(p => p.id === currentPatientId);
-  const patientSessions = mockData.sessions.filter(s => s.patient_id === currentPatientId);
+  const { user, role } = useAuth();
+  const [patientSessions, setPatientSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSessions = async () => {
+      if (!user?.uid) return;
+      try {
+        const q = query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPatientSessions(data);
+      } catch (err) {
+        console.error("Error fetching sessions:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSessions();
+  }, [user]);
+
+  const currentPatient = user as any;
   
-  // Chart data preparation
-  const chartData = mockData.chart_data.p1_symptom_history.map(entry => ({
-    date: new Date(entry.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-    headache: entry.headache,
-    bloating: entry.bloating,
-    overall: Math.round((entry.headache + entry.bloating) / 2)
+  const completedSessions = patientSessions.filter(s => s.status === 'completed').length;
+  const recommendedSessions = currentPatient?.llm_recommendation?.sessions_recommended || 5;
+  const progressPercentage = Math.min(Math.round((completedSessions / recommendedSessions) * 100), 100);
+  
+  // Dynamic Chart data simulation based on user health score and completed sessions
+  const baseScore = currentPatient?.healthScore || 50;
+  const improvementPerSession = 5;
+  
+  const chartData = Array.from({ length: Math.max(completedSessions + 1, 4) }, (_, i) => ({
+    session: `Session ${i}`,
+    overall: Math.min(baseScore + (i * improvementPerSession), 100),
+    vitality: Math.min(baseScore - 10 + (i * (improvementPerSession + 2)), 100)
   }));
 
   const recoveryData = [
-    { name: 'Recovery', value: 85, fill: 'hsl(var(--primary))' },
-    { name: 'Remaining', value: 15, fill: 'hsl(var(--muted))' }
+    { name: 'Recovery', value: progressPercentage, fill: 'hsl(var(--primary))' },
+    { name: 'Remaining', value: 100 - progressPercentage, fill: 'hsl(var(--muted))' }
   ];
 
-  const sessionTypeData = [
-    { type: 'Virechana', completed: 1, total: 3, color: 'hsl(var(--ayur-saffron))' },
-    { type: 'Abhyanga', completed: 0, total: 2, color: 'hsl(var(--ayur-soft-gold))' },
-    { type: 'Consultation', completed: 2, total: 2, color: 'hsl(var(--primary))' }
-  ];
+  // Dynamic session type breakdown
+  const sessionTypes = patientSessions.reduce((acc, session) => {
+    if (!acc[session.therapy]) {
+      acc[session.therapy] = { completed: 0, total: 0 };
+    }
+    acc[session.therapy].total += 1;
+    if (session.status === 'completed') acc[session.therapy].completed += 1;
+    return acc;
+  }, {} as Record<string, { completed: number, total: number }>);
 
-  const symptoms = currentPatient?.symptoms || [];
-  const averageImprovement = symptoms.reduce((acc, symptom) => {
-    const initial = symptom.score + 3; // Simulate initial higher scores
-    const improvement = ((initial - symptom.score) / initial) * 100;
-    return acc + improvement;
-  }, 0) / symptoms.length;
+  const sessionTypeData = Object.keys(sessionTypes).map((type, index) => ({
+    type,
+    completed: sessionTypes[type].completed,
+    total: sessionTypes[type].total,
+    color: index % 2 === 0 ? 'hsl(var(--primary))' : 'hsl(var(--ayur-saffron))'
+  }));
+
+  const symptoms = currentPatient?.symptoms || [{ name: "General Fatigue", score: 6 }];
+  const averageImprovement = progressPercentage; // Use overall progress for simplicity
+
+  if (loading) return <div className="p-6 text-center">Loading progress...</div>;
 
   if (role !== 'patient') {
     return (
@@ -80,7 +114,7 @@ const ProgressPage = () => {
               <Target className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-primary">85%</div>
+              <div className="text-2xl font-bold text-primary">{progressPercentage}%</div>
               <div className="text-sm text-muted-foreground">Overall Recovery</div>
             </div>
           </div>
@@ -117,7 +151,7 @@ const ProgressPage = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-green-600">
-                {patientSessions.filter(s => s.status === 'completed').length}
+                {completedSessions}
               </div>
               <div className="text-sm text-muted-foreground">Completed</div>
             </div>
@@ -137,7 +171,7 @@ const ProgressPage = () => {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                <XAxis dataKey="session" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                 <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                 <Tooltip 
                   contentStyle={{
@@ -148,28 +182,19 @@ const ProgressPage = () => {
                 />
                 <Line 
                   type="monotone" 
-                  dataKey="headache" 
+                  dataKey="vitality" 
                   stroke="hsl(var(--accent))" 
                   strokeWidth={3}
                   dot={{ fill: 'hsl(var(--accent))', strokeWidth: 0, r: 4 }}
-                  name="Headache"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="bloating" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={3}
-                  dot={{ fill: 'hsl(var(--primary))', strokeWidth: 0, r: 4 }}
-                  name="Bloating"
+                  name="Vitality"
                 />
                 <Line 
                   type="monotone" 
                   dataKey="overall" 
-                  stroke="hsl(var(--ayur-soft-gold))" 
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: 'hsl(var(--ayur-soft-gold))', strokeWidth: 0, r: 3 }}
-                  name="Overall"
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(var(--primary))', strokeWidth: 0, r: 4 }}
+                  name="Overall Score"
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -177,15 +202,11 @@ const ProgressPage = () => {
           <div className="flex justify-center space-x-6 mt-4 text-sm">
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 rounded-full bg-accent"></div>
-              <span>Headache</span>
+              <span>Vitality</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 rounded-full bg-primary"></div>
-              <span>Bloating</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-ayur-soft-gold"></div>
-              <span>Overall Trend</span>
+              <span>Overall Score</span>
             </div>
           </div>
         </Card>
@@ -210,7 +231,7 @@ const ProgressPage = () => {
               </ResponsiveContainer>
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary">85%</div>
+                  <div className="text-3xl font-bold text-primary">{progressPercentage}%</div>
                   <div className="text-sm text-muted-foreground">Recovered</div>
                 </div>
               </div>
@@ -231,7 +252,7 @@ const ProgressPage = () => {
           Current Symptom Status
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {symptoms.map((symptom, index) => {
+          {symptoms.map((symptom: { name: string, score: number }, index: number) => {
             const initialScore = symptom.score + 3; // Simulate initial higher scores
             const improvementPercent = ((initialScore - symptom.score) / initialScore) * 100;
             
@@ -245,12 +266,12 @@ const ProgressPage = () => {
                     {symptom.score}/10
                   </Badge>
                 </div>
-                <Progress 
+                <ProgressBar 
                   value={(10 - symptom.score) * 10} 
                   className="mb-2 h-2"
                 />
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Improvement: {Math.round(improvementPercent)}%</span>
+                  <span>Improvement: {Math.max(Math.round(improvementPercent), 0)}%</span>
                   <span>
                     {symptom.score <= 3 ? 'Excellent' : symptom.score <= 6 ? 'Good' : 'Needs attention'}
                   </span>
@@ -278,7 +299,7 @@ const ProgressPage = () => {
                 <span className="font-medium">{session.type}</span>
               </div>
               <div className="flex items-center space-x-4">
-                <Progress 
+                <ProgressBar 
                   value={(session.completed / session.total) * 100} 
                   className="w-24 h-2"
                 />

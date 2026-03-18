@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { 
+import {
   Calendar,
   Clock,
   Search,
@@ -16,7 +16,7 @@ import {
   Edit,
   Plus
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
+import { useDoctorData } from '@/hooks/useDoctorData';
 import { useToast } from '@/hooks/use-toast';
 
 interface FullScheduleModalProps {
@@ -28,6 +28,7 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const { sessions, patients } = useDoctorData();
   const { toast } = useToast();
 
   const formatDateTime = (dateTime: string) => {
@@ -60,17 +61,17 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
   };
 
   const getSessionsForDate = (date: Date) => {
-    return mockData.sessions.filter(session => {
+    return sessions.filter((session: any) => {
       const sessionDate = new Date(session.datetime);
       return sessionDate.toDateString() === date.toDateString();
     });
   };
 
-  const filteredSessions = mockData.sessions.filter(session => {
+  const filteredSessions = sessions.filter((session: any) => {
     if (!searchTerm) return true;
-    const patient = mockData.patients.find(p => p.id === session.patient_id);
-    return patient?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           session.therapy.toLowerCase().includes(searchTerm.toLowerCase());
+    const patient = patients.find((p: any) => p.id === session.patient_id);
+    return patient?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           session.therapy?.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
   const weekDays = getWeekDays(currentWeek);
@@ -204,7 +205,7 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
                       return (
                         <div key={time} className="h-16 border-b relative p-1">
                           {sessionsInSlot.map((session) => {
-                            const patient = mockData.patients.find(p => p.id === session.patient_id);
+                            const patient = patients.find((p: any) => p.id === session.patient_id);
                             return (
                               <div
                                 key={session.id}
@@ -240,7 +241,7 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
                   All Sessions ({filteredSessions.length})
                 </div>
                 {filteredSessions.map((session) => {
-                  const patient = mockData.patients.find(p => p.id === session.patient_id);
+                  const patient = patients.find((p: any) => p.id === session.patient_id);
                   return (
                     <div
                       key={session.id}

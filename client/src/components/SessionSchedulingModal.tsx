@@ -11,7 +11,7 @@ import { Calendar as CalendarIcon, Clock, User, Sparkles, Loader2 } from 'lucide
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 
 interface SessionSchedulingModalProps {
   isOpen: boolean;
@@ -67,9 +67,38 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
       sessionDatetime.setHours(parseInt(hours, 10));
       sessionDatetime.setMinutes(parseInt(minutes, 10));
 
+      // ── Conflict Detection: check for existing sessions at same time ──
+      const conflictQuery = query(
+        collection(db, 'sessions'),
+        where('datetime', '==', sessionDatetime.toISOString()),
+        where('status', '==', 'scheduled')
+      );
+      const conflictSnap = await getDocs(conflictQuery);
+      if (!conflictSnap.empty) {
+        toast({
+          title: "Time Slot Conflict! ⚠️",
+          description: "This time slot is already booked. Please choose a different time.",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // ── Dynamic Doctor Assignment: find first registered doctor ──
+      let assignedDoctorId = 'dr1'; // fallback
+      try {
+        const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
+        const doctorsSnap = await getDocs(doctorsQuery);
+        if (!doctorsSnap.empty) {
+          assignedDoctorId = doctorsSnap.docs[0].id;
+        }
+      } catch (e) {
+        console.error('Error fetching doctors:', e);
+      }
+
       const sessionData = {
         patient_id: user.uid,
-        practitioner_id: 'dr1', // For MVP, assigning a default doctor or picking one based on logic
+        practitioner_id: assignedDoctorId,
         datetime: sessionDatetime.toISOString(),
         duration_minutes: therapy.includes('Consultation') ? 30 : 60,
         status: 'scheduled',

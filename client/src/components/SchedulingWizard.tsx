@@ -20,7 +20,6 @@ import {
   TrendingUp,
   Loader2
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
 
 interface SchedulingWizardProps {
   isOpen: boolean;

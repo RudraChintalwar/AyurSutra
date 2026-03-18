@@ -26,6 +26,7 @@ import NotFound from "@/pages/NotFound";
 import DietPlanner from "@/pages/DietPlanner";
 import HerbalRemedies from "@/pages/HerbalRemedies";
 import ReportAnalyzer from "@/pages/ReportAnalyzer";
+import MedicineVerifier from "@/pages/MedicineVerifier";
 import EmartHome from "@/pages/emart/EmartHome";
 import EmartProducts from "@/pages/emart/EmartProducts";
 import EmartProductDetail from "@/pages/emart/EmartProductDetail";
@@ -247,6 +248,17 @@ const AppRoutes = () => {
           <ProtectedRoute allowedRoles={["patient", "doctor"]}>
             <DashboardLayout>
               <ReportAnalyzer />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/medicine-verifier"
+        element={
+          <ProtectedRoute allowedRoles={["patient", "doctor"]}>
+            <DashboardLayout>
+              <MedicineVerifier />
             </DashboardLayout>
           </ProtectedRoute>
         }

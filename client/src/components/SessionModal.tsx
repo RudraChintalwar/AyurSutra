@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +13,12 @@ import {
   Star,
   Activity
 } from 'lucide-react';
-import { mockData, Session } from '@/data/mockData';
 import FeedbackForm from './FeedbackForm';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface SessionModalProps {
-  session: Session | null;
+  session: any | null;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -25,11 +26,29 @@ interface SessionModalProps {
 const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose }) => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [relatedSessions, setRelatedSessions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRelated = async () => {
+      if (!session?.patient_id) return;
+      try {
+        const q = query(
+          collection(db, 'sessions'),
+          where('patient_id', '==', session.patient_id)
+        );
+        const snap = await getDocs(q);
+        setRelatedSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error fetching related sessions:', err);
+      }
+    };
+    if (session) fetchRelated();
+  }, [session]);
 
   if (!session) return null;
 
-  const patient = mockData.patients.find(p => p.id === session.patient_id);
-  const practitioner = mockData.practitioners.find(p => p.id === session.practitioner_id);
+  const patient = { name: session.patient_name || 'Patient', dosha: session.dosha || 'N/A', reason_for_visit: session.reason || '', symptoms: session.symptoms || [] };
+  const practitioner = { name: session.practitioner_name || 'Practitioner', specialty: session.specialty || 'Panchakarma' };
 
   const formatDateTime = (dateTime: string) => {
     return new Date(dateTime).toLocaleString('en-IN', {
@@ -155,7 +174,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                     Pre-Procedure Guidelines
                   </h4>
                   <div className="space-y-2">
-                    {session.precautions_pre.map((precaution, index) => (
+                    {session.precautions_pre.map((precaution: string, index: number) => (
                       <label key={index} className="flex items-center space-x-3 cursor-pointer">
                         <input 
                           type="checkbox" 
@@ -195,7 +214,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                     Post-Procedure Care
                   </h4>
                   <div className="space-y-2">
-                    {session.precautions_post.map((precaution, index) => (
+                    {session.precautions_post.map((precaution: string, index: number) => (
                       <div key={index} className="flex items-center space-x-3">
                         <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                         <span className="text-sm">{precaution}</span>
@@ -230,7 +249,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                     <strong>Reason for visit:</strong> {patient.reason_for_visit}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    <strong>Current symptoms:</strong> {patient.symptoms.map(s => s.name).join(', ')}
+                    <strong>Current symptoms:</strong> {patient.symptoms.map((s: any) => s.name).join(', ')}
                   </p>
                 </div>
               )}
@@ -266,7 +285,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                       <div className="pt-2">
                         <strong>Symptom Scores:</strong>
                         <div className="grid grid-cols-2 gap-2 mt-1">
-                          {Object.entries(session.feedback.symptom_scores).map(([symptom, score]) => (
+                          {Object.entries(session.feedback.symptom_scores).map(([symptom, score]: [string, any]) => (
                             <div key={symptom} className="flex justify-between text-xs">
                               <span>{symptom}:</span>
                               <span className="font-medium">{score}/10</span>
@@ -293,9 +312,9 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               <div className="p-4 bg-muted/30 rounded-lg">
                 <h4 className="font-semibold mb-3">Related Sessions</h4>
                 <div className="space-y-2">
-                  {mockData.sessions
-                    .filter(s => s.patient_id === session.patient_id && s.therapy === session.therapy)
-                    .map((relatedSession, index) => (
+                  {relatedSessions
+                    .filter(s => s.therapy === session.therapy)
+                    .map((relatedSession: any, index: number) => (
                       <div key={relatedSession.id} className="flex items-center justify-between text-sm">
                         <span>Session #{relatedSession.session_number}</span>
                         <div className="flex items-center space-x-2">

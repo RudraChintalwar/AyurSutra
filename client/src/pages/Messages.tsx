@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,21 +15,67 @@ import {
   UserCheck,
   Settings
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  channel: string;
+  datetime: string;
+  read: boolean;
+  patient_id: string;
+  sender?: string;
+}
 
 const Messages = () => {
-  const { role } = useAuth();
-  const [selectedNotification, setSelectedNotification] = useState(mockData.notifications[0]);
+  const { user, role } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
-  // For patient view, filter notifications for current patient
-  const currentPatientId = 'p1'; // Simulate logged in as Asha Nair
-  const patientNotifications = mockData.notifications.filter(n => n.patient_id === currentPatientId);
-
-  // For practitioner view, show all notifications with sender info
-  const practitionerNotifications = mockData.notifications;
-
-  const notifications = role === 'patient' ? patientNotifications : practitionerNotifications;
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!user?.uid) return;
+      try {
+        // Build notifications from sessions
+        const sessionsQuery = role === 'doctor'
+          ? query(collection(db, 'sessions'))
+          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+        const snap = await getDocs(sessionsQuery);
+        const generatedNotifications: Notification[] = snap.docs.map((doc, i) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: `Session ${data.status === 'scheduled' ? 'Scheduled' : 'Completed'}: ${data.therapy || 'Panchakarma'}`,
+            body: `Your ${data.therapy || 'therapy'} session is ${data.status}. Duration: ${data.duration_minutes || 60} minutes.`,
+            channel: 'in-app',
+            datetime: data.datetime || new Date().toISOString(),
+            read: data.status === 'completed',
+            patient_id: data.patient_id || '',
+            sender: 'system'
+          };
+        });
+        // Add a welcome notification
+        generatedNotifications.unshift({
+          id: 'welcome',
+          title: 'Welcome to AyurSutra',
+          body: 'Your account has been set up. Explore your dashboard to get started with your Ayurvedic wellness journey!',
+          channel: 'in-app',
+          datetime: new Date().toISOString(),
+          read: false,
+          patient_id: user.uid,
+          sender: 'system'
+        });
+        setNotifications(generatedNotifications);
+        if (generatedNotifications.length > 0) setSelectedNotification(generatedNotifications[0]);
+      } catch (err) {
+        console.error('Error fetching notifications:', err);
+      }
+    };
+    fetchNotifications();
+  }, [user, role]);
 
   const getChannelIcon = (channel: string) => {
     switch (channel) {
@@ -69,8 +115,7 @@ const Messages = () => {
   };
 
   const getPatientName = (patientId: string) => {
-    const patient = mockData.patients.find(p => p.id === patientId);
-    return patient?.name || 'Unknown Patient';
+    return patientId?.slice(0, 8) || 'Unknown Patient';
   };
 
   return (
@@ -229,7 +274,7 @@ const Messages = () => {
                     <div className="flex items-center space-x-3">
                       <Avatar className="w-8 h-8">
                         <AvatarImage 
-                          src={mockData.patients.find(p => p.id === selectedNotification.patient_id)?.avatar} 
+                          src={undefined} 
                           alt="Patient" 
                         />
                         <AvatarFallback>P</AvatarFallback>

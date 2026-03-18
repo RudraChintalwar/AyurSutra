@@ -5,6 +5,7 @@ import cors from "cors";
 import schedulingRoutes from "./routes/scheduling.js";
 import chatbotRoutes from "./routes/chatbot.js";
 import notificationRoutes from "./routes/notifications.js";
+import calendarRoutes from "./routes/calendar.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,6 +30,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/scheduling", schedulingRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/calendar", calendarRoutes);
 
 // ─── Error Handler ───────────────────────────────────────
 app.use((err, req, res, next) => {

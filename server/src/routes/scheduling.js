@@ -1,5 +1,6 @@
 import express from "express";
 import Groq from "groq-sdk";
+import { calculatePriorityScore, buildPriorityQueue, bumpAndReschedule, MaxHeap } from "../utils/priorityQueue.js";
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -157,6 +158,137 @@ router.post("/slots", async (req, res) => {
     } catch (error) {
         console.error("Slot generation error:", error);
         res.status(500).json({ success: false, error: "Failed to generate slots" });
+    }
+});
+
+// ─── Calculate weighted priority score ───────────────────
+router.post("/calculate-priority", async (req, res) => {
+    try {
+        const { severityScore, feedbackEscalation, feedbackMultiplier, dosha, slotDatetime, createdAt } = req.body;
+
+        // Optionally call RF Classifier for severity if not provided
+        let severity = severityScore;
+        if (!severity && req.body.symptoms) {
+            try {
+                const rfResponse = await fetch(`${ML_SERVICE_URL}/classify-severity`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symptoms: req.body.symptoms, dosha: dosha || "Unknown" }),
+                });
+                const rfData = await rfResponse.json();
+                severity = rfData.severity_score || 5;
+            } catch (e) {
+                console.log("RF Classifier unavailable, using default severity:", e.message);
+                severity = 5;
+            }
+        }
+
+        const result = calculatePriorityScore({
+            severityScore: severity || 5,
+            feedbackEscalation: feedbackEscalation || false,
+            feedbackMultiplier: feedbackMultiplier || 1.0,
+            dosha: dosha || "",
+            slotDatetime: slotDatetime || null,
+            createdAt: createdAt || null,
+        });
+
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error("Priority calculation error:", error);
+        res.status(500).json({ success: false, error: "Failed to calculate priority" });
+    }
+});
+
+// ─── Build priority queue from sessions ──────────────────
+router.post("/priority-queue", async (req, res) => {
+    try {
+        const { sessions, patients } = req.body;
+
+        if (!sessions || !Array.isArray(sessions)) {
+            return res.status(400).json({ success: false, error: "Sessions array required" });
+        }
+
+        const heap = buildPriorityQueue(sessions, patients || []);
+        const sortedQueue = heap.toSortedArray();
+
+        res.json({
+            success: true,
+            queue: sortedQueue,
+            stats: {
+                total: sortedQueue.length,
+                highPriority: sortedQueue.filter((s) => s.priorityScore >= 80).length,
+                mediumPriority: sortedQueue.filter((s) => s.priorityScore >= 60 && s.priorityScore < 80).length,
+                lowPriority: sortedQueue.filter((s) => s.priorityScore < 60).length,
+            },
+        });
+    } catch (error) {
+        console.error("Priority queue build error:", error);
+        res.status(500).json({ success: false, error: "Failed to build priority queue" });
+    }
+});
+
+// ─── Bump & reschedule high-priority patient ─────────────
+router.post("/bump", async (req, res) => {
+    try {
+        const { highPrioritySession, scheduledSessions, availableSlots } = req.body;
+
+        if (!highPrioritySession || !scheduledSessions) {
+            return res.status(400).json({ success: false, error: "highPrioritySession and scheduledSessions required" });
+        }
+
+        const result = bumpAndReschedule(highPrioritySession, scheduledSessions, availableSlots || []);
+
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error("Bump error:", error);
+        res.status(500).json({ success: false, error: "Failed to bump/reschedule" });
+    }
+});
+
+// ─── Get RF Classifier severity + RF Regressor sessions ──
+router.post("/ml-analysis", async (req, res) => {
+    try {
+        const { symptoms, dosha, age, gender } = req.body;
+        let severityResult = null;
+        let sessionPrediction = null;
+
+        // 1. Call RF Classifier for severity
+        try {
+            const sevResponse = await fetch(`${ML_SERVICE_URL}/classify-severity`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symptoms, dosha: dosha || "Unknown" }),
+            });
+            severityResult = await sevResponse.json();
+        } catch (e) {
+            console.log("RF Classifier unavailable:", e.message);
+        }
+
+        // 2. Call RF Regressor for session prediction
+        try {
+            const sessResponse = await fetch(`${ML_SERVICE_URL}/predict-sessions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    severity: severityResult?.severity_score || 5,
+                    dosha: dosha || "Unknown",
+                    age: age || 35,
+                    gender: gender || "Unknown",
+                }),
+            });
+            sessionPrediction = await sessResponse.json();
+        } catch (e) {
+            console.log("RF Regressor unavailable:", e.message);
+        }
+
+        res.json({
+            success: true,
+            severity: severityResult,
+            sessionPrediction,
+        });
+    } catch (error) {
+        console.error("ML analysis error:", error);
+        res.status(500).json({ success: false, error: "ML analysis failed" });
     }
 });
 

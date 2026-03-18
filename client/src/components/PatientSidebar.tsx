@@ -21,7 +21,8 @@ import {
   FileText,
   Activity,
   ShoppingBag,
-  Stethoscope
+  Stethoscope,
+  Shield
 } from 'lucide-react';
 
 const patientItems = [
@@ -30,6 +31,7 @@ const patientItems = [
   { title: 'Diet Planner', url: '/diet-plan', icon: Activity },
   { title: 'Herbal Remedies', url: '/remedies', icon: Leaf },
   { title: 'Report Analyzer', url: '/report-analyzer', icon: Stethoscope },
+  { title: 'Medicine Verifier', url: '/medicine-verifier', icon: Shield },
   { title: 'Ayurvedic Mart', url: '/emart', icon: ShoppingBag },
   { title: 'Settings', url: '/patient/settings', icon: Settings },
 ];

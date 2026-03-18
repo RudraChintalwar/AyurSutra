@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,21 +25,40 @@ import {
   Download,
   FileText
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 const PatientSettings = () => {
-  const currentPatientId = 'p1';
-  const currentPatient = mockData.patients.find(p => p.id === currentPatientId);
+  const { user, updateUserProfile } = useAuth();
+  const { toast } = useToast();
+  const currentPatient = user as any;
+  const [sessionCount, setSessionCount] = useState(0);
+
+  useEffect(() => {
+    const fetchSessionCount = async () => {
+      if (!user?.uid) return;
+      try {
+        const q = query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+        const snap = await getDocs(q);
+        setSessionCount(snap.size);
+      } catch (err) {
+        console.error('Error fetching sessions:', err);
+      }
+    };
+    fetchSessionCount();
+  }, [user]);
 
   const [profileData, setProfileData] = useState({
-    name: currentPatient?.name || 'Asha Nair',
-    email: currentPatient?.email || 'asha.nair@example.com',
-    phone: currentPatient?.phone || '+91-9876543210',
-    dob: currentPatient?.dob || '1989-08-12',
-    gender: currentPatient?.gender || 'Female',
-    address: 'Mumbai, Maharashtra, India',
-    emergencyContact: '+91-9876543211',
-    emergencyName: 'Raj Nair (Spouse)'
+    name: currentPatient?.name || '',
+    email: currentPatient?.email || '',
+    phone: currentPatient?.phone || '',
+    dob: '',
+    gender: currentPatient?.gender || '',
+    address: '',
+    emergencyContact: '',
+    emergencyName: ''
   });
 
   const [notifications, setNotifications] = useState({
@@ -62,8 +81,13 @@ const PatientSettings = () => {
     researchParticipation: false
   });
 
-  const handleProfileUpdate = () => {
-    console.log('Profile updated:', profileData);
+  const handleProfileUpdate = async () => {
+    try {
+      await updateUserProfile({ name: profileData.name, phone: profileData.phone, gender: profileData.gender });
+      toast({ title: 'Profile Updated', description: 'Your profile has been saved successfully.' });
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to update profile.', variant: 'destructive' });
+    }
   };
 
   const handleNotificationUpdate = () => {
@@ -108,7 +132,7 @@ const PatientSettings = () => {
                 <Avatar className="w-24 h-24">
                   <AvatarImage src={currentPatient?.avatar} alt={currentPatient?.name} />
                   <AvatarFallback>
-                    {currentPatient?.name?.split(' ').map(n => n[0]).join('') || 'AN'}
+                    {currentPatient?.name?.split(' ').map((n: string) => n[0]).join('') || 'AN'}
                   </AvatarFallback>
                 </Avatar>
                 <Button size="sm" variant="outline" className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full p-0">
@@ -117,7 +141,7 @@ const PatientSettings = () => {
               </div>
               <div className="flex-1">
                 <h3 className="font-playfair text-2xl font-semibold">{profileData.name}</h3>
-                <p className="text-muted-foreground">Patient ID: {currentPatientId}</p>
+                <p className="text-muted-foreground">Patient ID: {user?.uid?.slice(0, 8) || 'N/A'}</p>
                 <div className="flex items-center space-x-3 mt-2">
                   <Badge className="dosha-vata px-3 py-1">
                     {currentPatient?.dosha} Constitution
@@ -255,14 +279,14 @@ const PatientSettings = () => {
 
               <div className="p-4 bg-accent/5 rounded-lg text-center">
                 <div className="text-lg font-bold text-accent">
-                  {currentPatient?.llm_recommendation.therapy}
+                  {currentPatient?.llm_recommendation?.therapy || 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Current Treatment</div>
               </div>
 
               <div className="p-4 bg-green-100 rounded-lg text-center">
                 <div className="text-lg font-bold text-green-600">
-                  {currentPatient?.llm_recommendation.priority_score}
+                  {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Health Score</div>
               </div>
@@ -426,7 +450,7 @@ const PatientSettings = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">Session History</span>
                     <span className="text-sm text-muted-foreground">
-                      {mockData.sessions.filter(s => s.patient_id === currentPatientId).length} sessions
+                      {sessionCount} sessions
                     </span>
                   </div>
                 </div>
@@ -435,7 +459,7 @@ const PatientSettings = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">Symptom Tracking</span>
                     <span className="text-sm text-muted-foreground">
-                      {currentPatient?.symptoms.length} symptoms tracked
+                      {currentPatient?.symptoms?.length || 0} symptoms tracked
                     </span>
                   </div>
                 </div>

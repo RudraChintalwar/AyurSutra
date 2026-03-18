@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -26,9 +26,21 @@ import {
   MoreVertical,
   Archive
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  channel: string;
+  datetime: string;
+  read: boolean;
+  sender?: string;
+}
 
 interface NotificationCenterProps {
   trigger?: React.ReactNode;
@@ -42,8 +54,46 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   onOpenChange
 }) => {
   const [activeTab, setActiveTab] = useState('all');
-  const [notifications, setNotifications] = useState(mockData.notifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const { user, role } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!user?.uid) return;
+      try {
+        const sessionsQuery = role === 'doctor'
+          ? query(collection(db, 'sessions'))
+          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+        const snap = await getDocs(sessionsQuery);
+        const generated: NotificationItem[] = snap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: `Session ${data.status === 'scheduled' ? 'Upcoming' : 'Completed'}: ${data.therapy || 'Panchakarma'}`,
+            body: `${data.therapy || 'Therapy'} session — ${data.duration_minutes || 60} minutes.`,
+            channel: 'in-app',
+            datetime: data.datetime || new Date().toISOString(),
+            read: data.status === 'completed',
+            sender: 'system'
+          };
+        });
+        generated.unshift({
+          id: 'welcome',
+          title: 'Welcome to AyurSutra',
+          body: 'Your Ayurvedic wellness journey starts here!',
+          channel: 'in-app',
+          datetime: new Date().toISOString(),
+          read: false,
+          sender: 'system'
+        });
+        setNotifications(generated);
+      } catch (err) {
+        console.error('Error fetching notifications:', err);
+      }
+    };
+    fetchNotifications();
+  }, [user, role]);
 
   const getNotificationIcon = (type: string, sender?: string) => {
     switch (sender) {
