@@ -1,0 +1,441 @@
+import React, { useState } from 'react';
+import SessionDetailsModal from '@/components/SessionDetailsModal';
+import FullScheduleModal from '@/components/FullScheduleModal';
+import FilterModal from '@/components/FilterModal';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Calendar } from '@/components/ui/calendar';
+import { 
+  Calendar as CalendarIcon,
+  Clock,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  AlertTriangle,
+  CheckCircle,
+  Filter,
+  Loader2
+} from 'lucide-react';
+import { useDoctorData, Session } from '@/hooks/useDoctorData';
+
+const DoctorCalendar = () => {
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
+  const [isSessionDetailsModalOpen, setIsSessionDetailsModalOpen] = useState(false);
+  const [isFullScheduleModalOpen, setIsFullScheduleModalOpen] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  
+  const { patients, sessions, loading } = useDoctorData();
+
+  const formatDateTime = (dateTime: string) => {
+    return new Date(dateTime).toLocaleString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata'
+    });
+  };
+
+  const formatDate = (dateTime: string) => {
+    return new Date(dateTime).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'Asia/Kolkata'
+    });
+  };
+
+  const getSessionsForDate = (date: Date) => {
+    return sessions.filter(session => {
+      const sessionDate = new Date(session.datetime);
+      return sessionDate.toDateString() === date.toDateString();
+    });
+  };
+
+  const todaysSessions = getSessionsForDate(selectedDate);
+  const upcomingSessions = sessions
+    .filter(s => new Date(s.datetime) > new Date())
+    .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
+    .slice(0, 5);
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-playfair text-3xl font-bold text-primary">
+            Calendar & Scheduling
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Manage appointments and session schedules
+          </p>
+        </div>
+        <Button 
+          className="ayur-button-accent"
+          onClick={() => setIsFullScheduleModalOpen(true)}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Schedule Session
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : (
+        <>
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="ayur-card p-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <CalendarIcon className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-primary">{todaysSessions.length}</div>
+              <div className="text-sm text-muted-foreground">Today's Sessions</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="ayur-card p-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-accent/10 rounded-lg">
+              <Clock className="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-accent">
+                {sessions.filter(s => s.status === 'scheduled').length}
+              </div>
+              <div className="text-sm text-muted-foreground">Scheduled</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="ayur-card p-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                {sessions.filter(s => s.status === 'completed').length}
+              </div>
+              <div className="text-sm text-muted-foreground">Completed</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="ayur-card p-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-600">0</div>
+              <div className="text-sm text-muted-foreground">Conflicts</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Calendar */}
+        <div className="lg:col-span-1">
+          <Card className="ayur-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-playfair text-xl font-semibold">Calendar</h3>
+              <div className="flex items-center space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setIsFilterModalOpen(true)}
+                >
+                  <Filter className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => date && setSelectedDate(date)}
+              className="rounded-lg border"
+            />
+
+            <div className="mt-4 space-y-2">
+              <div className="text-sm font-medium text-muted-foreground">Legend</div>
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-3 h-3 bg-primary rounded-full"></div>
+                <span>Scheduled</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-3 h-3 bg-green-600 rounded-full"></div>
+                <span>Completed</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-3 h-3 bg-red-600 rounded-full"></div>
+                <span>High Priority</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Today's Schedule */}
+        <div className="lg:col-span-1">
+          <Card className="ayur-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-playfair text-xl font-semibold">
+                {selectedDate.toDateString() === new Date().toDateString() 
+                  ? "Today's Schedule" 
+                  : `Schedule for ${formatDate(selectedDate.toISOString())}`}
+              </h3>
+              <div className="flex items-center space-x-1">
+                <Button variant="ghost" size="sm">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {todaysSessions.length > 0 ? (
+                todaysSessions.map((session, index) => {
+                  const patient = patients.find(p => p.id === session.patient_id);
+                  const priority = patient?.llm_recommendation?.priority_score || 0;
+                  
+                  return (
+                    <div
+                      key={session.id}
+                      className="p-3 bg-muted/30 rounded-lg animate-fade-in cursor-pointer hover:bg-muted/50 transition-colors"
+                      style={{ animationDelay: `${index * 0.1}s` }}
+                      onClick={() => {
+                        setSelectedSession(session);
+                        setIsSessionDetailsModalOpen(true);
+                      }}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start space-x-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarImage src={patient?.avatar} alt={patient?.name} />
+                            <AvatarFallback>
+                              {patient?.name?.split(' ').map(n => n[0]).join('') || ''}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium text-sm">{patient?.name}</div>
+                            <div className="text-xs text-muted-foreground">{session.therapy}</div>
+                            <div className="flex items-center text-xs text-muted-foreground mt-1">
+                              <Clock className="w-3 h-3 mr-1" />
+                              {formatDateTime(session.datetime)} • {session.duration_minutes}min
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge 
+                            variant={session.status === 'completed' ? 'default' : 'outline'}
+                            className="text-xs mb-1"
+                          >
+                            {session.status}
+                          </Badge>
+                          {priority >= 80 && (
+                            <div className="text-xs text-red-600 flex items-center">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              High Priority
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No sessions scheduled</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => setIsFullScheduleModalOpen(true)}
+                  >
+                    Schedule First Session
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Upcoming Sessions */}
+        <div className="lg:col-span-1">
+          <Card className="ayur-card p-6">
+            <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
+              <Users className="w-5 h-5 mr-2 text-primary" />
+              Upcoming Sessions
+            </h3>
+
+            <div className="space-y-3">
+              {upcomingSessions.map((session, index) => {
+                const patient = patients.find(p => p.id === session.patient_id);
+                const priority = patient?.llm_recommendation?.priority_score || 0;
+                
+                return (
+                  <div
+                    key={session.id}
+                    className="p-3 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg animate-slide-up cursor-pointer hover:scale-[1.02] transition-transform"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                    onClick={() => {
+                      setSelectedSession(session);
+                      setIsSessionDetailsModalOpen(true);
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={patient?.avatar} alt={patient?.name} />
+                          <AvatarFallback>
+                            {patient?.name?.split(' ').map(n => n[0]).join('') || ''}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium text-sm">{patient?.name}</div>
+                          <div className="text-xs text-muted-foreground">{session.therapy}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-medium">{formatDate(session.datetime)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatDateTime(session.datetime)}
+                        </div>
+                        {priority >= 80 && (
+                          <Badge className="priority-badge-high text-xs mt-1">
+                            High Priority
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full mt-4"
+              onClick={() => setIsFullScheduleModalOpen(true)}
+            >
+              View Full Schedule
+            </Button>
+          </Card>
+        </div>
+      </div>
+
+      {/* Time Slot View */}
+      <Card className="ayur-card p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-playfair text-xl font-semibold">Daily Timeline</h3>
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant={viewMode === 'week' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setViewMode('week')}
+              className={viewMode === 'week' ? 'ayur-button-hero' : ''}
+            >
+              Week View
+            </Button>
+            <Button 
+              variant={viewMode === 'day' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setViewMode('day')}
+              className={viewMode === 'day' ? 'ayur-button-hero' : ''}
+            >
+              Day View
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-12 gap-4 min-h-96">
+          {/* Time slots */}
+          <div className="col-span-1 space-y-4">
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} className="text-sm text-muted-foreground text-right pr-2 h-16 flex items-start pt-2">
+                {9 + i}:00
+              </div>
+            ))}
+          </div>
+
+          {/* Schedule blocks */}
+          <div className="col-span-11 relative">
+            <div className="absolute inset-0 grid grid-rows-10 gap-4">
+              {Array.from({ length: 10 }, (_, i) => (
+                <div key={i} className="border-t border-muted/50 relative">
+                  {/* Render sessions that fall in this time slot */}
+                  {todaysSessions
+                    .filter(session => {
+                      const sessionHour = new Date(session.datetime).getHours();
+                      return sessionHour === 9 + i;
+                    })
+                    .map(session => {
+                      const patient = patients.find(p => p.id === session.patient_id);
+                      return (
+                        <div
+                          key={session.id}
+                          className="absolute left-0 right-0 top-2 p-2 bg-primary/10 border border-primary/20 rounded-lg cursor-pointer hover:bg-primary/20 transition-colors"
+                          onClick={() => {
+                            setSelectedSession(session);
+                            setIsSessionDetailsModalOpen(true);
+                          }}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Avatar className="w-6 h-6">
+                              <AvatarImage src={patient?.avatar} alt={patient?.name} />
+                              <AvatarFallback className="text-xs">
+                                {patient?.name?.split(' ').map(n => n[0]).join('') || ''}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="text-sm font-medium">{patient?.name}</div>
+                              <div className="text-xs text-muted-foreground">{session.therapy}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+      </>)}
+
+      {/* Modals */}
+      <SessionDetailsModal
+        isOpen={isSessionDetailsModalOpen}
+        onClose={() => setIsSessionDetailsModalOpen(false)}
+        session={selectedSession}
+        patient={selectedSession ? patients.find(p => p.id === selectedSession.patient_id) : undefined}
+      />
+      
+      <FullScheduleModal
+        isOpen={isFullScheduleModalOpen}
+        onClose={() => setIsFullScheduleModalOpen(false)}
+      />
+      
+      <FilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        type="sessions"
+      />
+    </div>
+  );
+};
+
+export default DoctorCalendar;

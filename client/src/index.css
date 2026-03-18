@@ -1,0 +1,415 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ayurvedic Panchakarma Design System - Premium, organic, calming aesthetics */
+
+@layer base {
+  :root {
+    /* Ayurvedic Color Palette */
+    --ayur-deep-leaf: 155 38% 29%;     /* Deep Leaf Green #2C6E49 */
+    --ayur-saffron: 25 100% 60%;        /* Saffron Accent #FF9933 */
+    --ayur-earth-beige: 40 33% 97%;     /* Earth Beige #F7F4EE */
+    --ayur-clay-brown: 20 49% 33%;      /* Clay Brown #7C4A2F */
+    --ayur-soft-gold: 48 66% 53%;       /* Soft Gold #D4AF37 */
+    --ayur-muted-gray: 0 0% 35%;        /* Muted Gray #5A5A5A */
+    
+    /* Core Design System */
+    --background: 40 33% 97%;            /* Earth Beige for warm feel */
+    --foreground: 0 0% 0%;               /* Black text for better readability */
+    
+    --card: 0 0% 100%;                   /* Pure white cards for contrast */
+    --card-foreground: 155 38% 15%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 155 38% 15%;
+    
+    --primary: 155 38% 29%;              /* Deep Leaf Green */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 25 100% 95%;            /* Light saffron tint */
+    --secondary-foreground: 155 38% 29%;
+    
+    --muted: 40 15% 92%;                 /* Subtle beige */
+    --muted-foreground: 0 0% 35%;        /* Muted gray */
+    
+    --accent: 25 100% 60%;               /* Saffron accent */
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 40 15% 88%;                /* Soft beige border */
+    --input: 40 15% 88%;
+    --ring: 25 100% 60%;                 /* Saffron focus ring */
+    
+    --radius: 0.75rem;                   /* 12px rounded corners */
+    
+    /* Priority Colors */
+    --priority-high: 0 85% 65%;          /* Red for urgent */
+    --priority-medium: 25 100% 60%;      /* Saffron for medium */
+    --priority-low: 155 38% 29%;         /* Green for low */
+    
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(var(--ayur-deep-leaf)), hsl(var(--ayur-soft-gold)));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(40 15% 98%));
+    --gradient-priority: linear-gradient(90deg, hsl(var(--priority-high)), hsl(var(--priority-medium)), hsl(var(--priority-low)));
+    
+    /* Shadows */
+    --shadow-soft: 0 6px 20px hsl(155 38% 29% / 0.08);
+    --shadow-card: 0 4px 12px hsl(155 38% 29% / 0.06);
+    --shadow-hover: 0 8px 25px hsl(155 38% 29% / 0.12);
+    
+    /* Animation Timings */
+    --transition-fast: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 600ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 0 0% 100%;
+
+    --sidebar-foreground: 0 0% 0%;
+
+    --sidebar-primary: 155 38% 29%;
+
+    --sidebar-primary-foreground: 0 0% 100%;
+
+    --sidebar-accent: 40 15% 92%;
+
+    --sidebar-accent-foreground: 0 0% 15%;
+
+    --sidebar-border: 40 15% 88%;
+
+    --sidebar-ring: 25 100% 60%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+  }
+}
+
+@layer components {
+  /* Production-Level Ayurvedic Component Styles */
+  .ayur-card {
+    @apply bg-card border border-border rounded-xl overflow-hidden;
+    box-shadow: var(--shadow-card);
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+  
+  .ayur-card:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px) scale(1.02);
+  }
+  
+  .ayur-card:active {
+    transform: translateY(0) scale(1.01);
+  }
+  
+  .ayur-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gradient-hero);
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  
+  .ayur-card:hover::before {
+    opacity: 1;
+  }
+  
+  .ayur-gradient-bg {
+    background: var(--gradient-hero);
+  }
+  
+  .ayur-text-gradient {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .priority-badge-high {
+    @apply bg-red-100 text-red-700 border border-red-200;
+  }
+  
+  .priority-badge-medium {
+    @apply bg-orange-100 text-orange-700 border border-orange-200;
+  }
+  
+  .priority-badge-low {
+    @apply bg-green-100 text-green-700 border border-green-200;
+  }
+  
+  .ayur-button-hero {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/95;
+    box-shadow: var(--shadow-soft);
+    transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .ayur-button-hero:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+  }
+  
+  .ayur-button-hero:active {
+    transform: translateY(-1px);
+  }
+  
+  .ayur-button-hero::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s ease, height 0.3s ease;
+  }
+  
+  .ayur-button-hero:active::before {
+    width: 300px;
+    height: 300px;
+  }
+  
+  .ayur-button-accent {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90;
+    box-shadow: var(--shadow-soft);
+    transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .ayur-button-accent:hover {
+    box-shadow: var(--shadow-hover);
+  }
+  
+  .dosha-vata {
+    @apply bg-blue-50 text-blue-700 border border-blue-200;
+  }
+  
+  .dosha-pitta {
+    @apply bg-red-50 text-red-700 border border-red-200;
+  }
+  
+  .dosha-kapha {
+    @apply bg-green-50 text-green-700 border border-green-200;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out forwards;
+  }
+  
+  .animate-pulse-gentle {
+    animation: pulseGentle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  .loading-shimmer {
+    background: linear-gradient(90deg, 
+      hsl(var(--muted)) 25%, 
+      hsl(var(--muted-foreground) / 0.1) 50%, 
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  
+  .ayur-glass {
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  
+  .ayur-status-indicator {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+  
+  .status-scheduled {
+    @apply bg-blue-50 text-blue-700 border border-blue-200;
+  }
+  
+  .status-completed {
+    @apply bg-green-50 text-green-700 border border-green-200;
+  }
+  
+  .status-cancelled {
+    @apply bg-red-50 text-red-700 border border-red-200;
+  }
+  
+  .status-in-progress {
+    @apply bg-yellow-50 text-yellow-700 border border-yellow-200;
+  }
+  
+  .ayur-metric-card {
+    @apply ayur-card p-6 text-center relative overflow-hidden;
+  }
+  
+  .ayur-metric-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(135deg, transparent 0%, hsl(var(--primary) / 0.03) 100%);
+    pointer-events: none;
+  }
+}
+
+@keyframes slideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseGentle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.95;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.8) rotate(-5deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px hsl(var(--primary) / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.6), 0 0 30px hsl(var(--primary) / 0.4);
+  }
+}
