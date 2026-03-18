@@ -4,8 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
 
 interface Message {
+  id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  audioUrl?: string;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -13,16 +15,76 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export default function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Namaste! I am AyurVaidya, your digital Ayurvedic health assistant. How can I guide you towards better health today?" }
+    { id: '0', role: 'assistant', content: "नमस्ते! I am AyurVaidya, your digital Ayurvedic health assistant. How can I guide you towards better health today?" }
   ]);
   const [input, setInput] = useState('');
+  const [language, setLanguage] = useState('en');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement>(null);
+  const recognitionRef = useRef<any>(null);
   const { user } = useAuth();
   const [hasUnread, setHasUnread] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+
+      recognitionRef.current.onstart = () => {
+        setIsRecording(true);
+      };
+
+      recognitionRef.current.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          interim += event.results[i][0].transcript;
+        }
+        setTranscript(interim);
+        setInput(interim);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+    }
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      alert('Speech Recognition not supported in your browser');
+      return;
+    }
+
+    if (isRecording) {
+      recognitionRef.current.stop();
+    } else {
+      const langMap: { [key: string]: string } = {
+        en: 'en-US',
+        hi: 'hi-IN',
+        mr: 'mr-IN',
+        gu: 'gu-IN',
+      };
+
+      recognitionRef.current.lang = langMap[language] || 'en-US';
+      recognitionRef.current.start();
+      setTranscript('');
+    }
   };
 
   useEffect(() => {
@@ -45,45 +107,82 @@ export default function ChatbotWidget() {
 
     const userMessage = input.trim();
     setInput('');
+    setTranscript('');
     
     // Add user message to UI immediately
-    const newMessages: Message[] = [
-      ...messages,
-      { role: 'user', content: userMessage }
-    ];
-    setMessages(newMessages);
+    setMessages(prev => [...prev, { id: String(Date.now()), role: 'user', content: userMessage }]);
     setIsLoading(true);
 
     try {
-      const payload = {
+      console.log(`[Chat] Sending to ${API_URL}/api/chatbot/chat`);
+      const response = await axios.post(`${API_URL}/api/chatbot/chat`, {
         message: userMessage,
-        conversationHistory: messages.filter(m => m.role !== 'system'),
-        userProfile: user ? {
-          name: user.name || 'Patient',
-          dosha: user.dosha || null
-        } : null
-      };
-
-      const response = await axios.post(`${API_URL}/api/chatbot/chat`, payload);
+        language: language,
+      });
+      
+      console.log('[Chat] Response:', response.data);
       
       if (response.data.success) {
-        setMessages(prev => [...prev, { role: 'assistant', content: response.data.reply }]);
+        const botReply = response.data.reply || response.data.bot_response;
+        setMessages(prev => [...prev, { 
+          id: String(Date.now() + 1), 
+          role: 'assistant', 
+          content: botReply 
+        }]);
         if (!isOpen) setHasUnread(true);
+
+        // Generate speech
+        generateSpeech(botReply, language);
       } else {
         throw new Error(response.data.error || 'Failed to get response');
       }
-    } catch (error) {
-      console.error("Chat error:", error);
+    } catch (error: any) {
+      console.error('[Chat Error]', error.message);
+      
+      let errorMsg = "I'm sorry, I'm having trouble connecting right now. Please try again in a moment.";
+      
+      if (error.message.includes('ERR_INVALID_URL')) {
+        errorMsg = "⚠️ API URL not configured. Check VITE_API_URL environment variable.";
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMsg = "❌ Cannot connect to server. Is it running?";
+      } else if (error.response?.status === 500) {
+        errorMsg = "❌ Server error: Check Python service is running on port 8000";
+      }
+      
       setMessages(prev => [...prev, { 
+        id: String(Date.now()), 
         role: 'assistant', 
-        content: "I'm sorry, I'm having trouble connecting right now. Please try again in a moment." 
+        content: errorMsg
       }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const generateSpeech = async (text: string, lang: string) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/chatbot/generate-speech`, {
+        message: text,
+        language: lang,
+      });
+
+      if (response.data.status === 'success' && audioPlayerRef.current) {
+        audioPlayerRef.current.src = response.data.audio_url;
+        audioPlayerRef.current.play().catch(err => console.log('Audio play error:', err));
+      }
+    } catch (error) {
+      console.error('Speech generation error:', error);
+    }
+  };
+
+  const playAudio = (audioUrl: string) => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.src = audioUrl;
+      audioPlayerRef.current.play().catch(err => console.log('Audio play error:', err));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -116,17 +215,33 @@ export default function ChatbotWidget() {
             </button>
           </div>
 
+          {/* Language Selector */}
+          <div className="px-4 py-3 bg-slate-50 border-b border-gray-100 flex items-center gap-3">
+            <label htmlFor="lang-select" className="text-xs font-medium text-gray-600">Language:</label>
+            <select
+              id="lang-select"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="text-xs px-2 py-1 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="en">🇬🇧 English</option>
+              <option value="hi">🇮🇳 Hindi</option>
+              <option value="mr">🇮🇳 Marathi</option>
+              <option value="gu">🇮🇳 Gujarati</option>
+            </select>
+          </div>
+
           {/* Messages Area */}
           <div className="flex-1 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-4">
             <div className="text-center text-xs text-slate-400 my-2">
               <span className="bg-white px-2 py-1 rounded-full shadow-sm border border-slate-100">
-                AI Assistant - Not for medical emergencies
+                Voice & Text Support
               </span>
             </div>
             
-            {messages.map((msg, index) => (
+            {messages.map((msg) => (
               <div 
-                key={index} 
+                key={msg.id} 
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`flex max-w-[85%] gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -150,6 +265,14 @@ export default function ChatbotWidget() {
               </div>
             ))}
             
+            {isRecording && (
+              <div className="flex justify-start">
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-2xl text-xs">
+                  🎤 Recording... {transcript && `"${transcript}"`}
+                </div>
+              </div>
+            )}
+            
             {isLoading && (
               <div className="flex justify-start">
                 <div className="flex gap-2 max-w-[85%] flex-row">
@@ -169,27 +292,44 @@ export default function ChatbotWidget() {
           {/* Input Area */}
           <div className="p-3 bg-white border-t border-gray-100">
             <form onSubmit={handleSend} className="flex flex-col gap-2 relative">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about Ayurvedic remedies, doshas..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none overflow-hidden h-[52px]"
-                rows={1}
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 top-2 p-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isRecording ? 'Listening...' : 'Ask about herbs, doshas...'}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none h-[40px]"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  className={`p-2 rounded-lg transition-all ${
+                    isRecording 
+                      ? 'bg-red-100 text-red-600 border border-red-300 animate-pulse' 
+                      : 'bg-slate-100 text-slate-600 border border-slate-300 hover:bg-slate-200'
+                  }`}
+                  title={isRecording ? 'Stop recording' : 'Start voice input'}
+                >
+                  🎤
+                </button>
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isLoading}
+                  className="p-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
             </form>
             <div className="text-center mt-2 flex justify-center text-[10px] text-slate-400">
-              Powered by Groq AI
+              Powered by Groq & gTTS
             </div>
           </div>
+
+          {/* Hidden Audio Player */}
+          <audio ref={audioPlayerRef} style={{ display: 'none' }} />
         </div>
       )}
 
