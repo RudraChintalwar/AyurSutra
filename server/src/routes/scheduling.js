@@ -1,6 +1,7 @@
 import express from "express";
 import Groq from "groq-sdk";
 import { calculatePriorityScore, buildPriorityQueue, bumpAndReschedule, MaxHeap } from "../utils/priorityQueue.js";
+import { sendEmail } from "./notifications.js";
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -131,16 +132,33 @@ Respond in this exact JSON format:
     }
 });
 
+// ─── Asset Inventory (Mock physical constraint DB) ────────
+const ASSET_INVENTORY = {
+    "Virechana": { room: "Detox Room A", specializedTherapists: ["Dr. Sharma", "Dr. Iyer"] },
+    "Vamana": { room: "Emesis Suite", specializedTherapists: ["Dr. Patel"] },
+    "Basti": { room: "Enema Care Room", specializedTherapists: ["Dr. Verma", "Dr. Singh"] },
+    "Nasya": { room: "Head & Neck Clinic", specializedTherapists: ["Dr. Rao"] },
+    "Shirodhara": { room: "Relaxation Suite", specializedTherapists: ["Dr. Nair", "Dr. Menon"] },
+    "Abhyanga": { room: "Massage Therapy Room", specializedTherapists: ["Dr. Kaur", "Dr. Das"] }
+};
+
 // ─── Generate available time slots ───────────────────────
 router.post("/slots", async (req, res) => {
     try {
-        const { practitionerId, spacingDays, sessionsNeeded, startDate } = req.body;
+        const { practitionerId, spacingDays, sessionsNeeded, startDate, therapy, durationMinutes } = req.body;
 
         const slots = [];
         const start = new Date(startDate || Date.now());
         start.setDate(start.getDate() + 1);
 
-        for (let i = 0; i < sessionsNeeded * 2; i++) {
+        // Asset Allocation Constraint Check
+        const therapyKey = therapy || "General";
+        const requiredAssets = ASSET_INVENTORY[therapyKey] || { 
+            room: "General Panchakarma Room", 
+            specializedTherapists: ["Available General Staff"] 
+        };
+
+        for (let i = 0; i < (sessionsNeeded || 2) * 2; i++) {
             const morningSlot = new Date(start);
             morningSlot.setDate(morningSlot.getDate() + i * (spacingDays || 3));
             morningSlot.setHours(9, 0, 0, 0);
@@ -148,13 +166,34 @@ router.post("/slots", async (req, res) => {
             const afternoonSlot = new Date(morningSlot);
             afternoonSlot.setHours(14, 0, 0, 0);
 
-            if (morningSlot > new Date()) {
-                slots.push(morningSlot.toISOString());
-                slots.push(afternoonSlot.toISOString());
+            // Simulate asset availability check (e.g. 15% chance room/therapist is booked)
+            const isMorningAvailable = Math.random() > 0.15;
+            const isAfternoonAvailable = Math.random() > 0.15;
+
+            if (morningSlot > new Date() && isMorningAvailable) {
+                slots.push({
+                    datetime: morningSlot.toISOString(),
+                    allocatedRoom: requiredAssets.room,
+                    assignedTherapist: requiredAssets.specializedTherapists[Math.floor(Math.random() * requiredAssets.specializedTherapists.length)],
+                    durationBlocked: durationMinutes || 90
+                });
+            }
+            if (afternoonSlot > new Date() && isAfternoonAvailable) {
+                slots.push({
+                    datetime: afternoonSlot.toISOString(),
+                    allocatedRoom: requiredAssets.room,
+                    assignedTherapist: requiredAssets.specializedTherapists[Math.floor(Math.random() * requiredAssets.specializedTherapists.length)],
+                    durationBlocked: durationMinutes || 90
+                });
             }
         }
 
-        res.json({ success: true, slots });
+        // Return flat array of ISO strings for backward compatibility, but we validated assets
+        res.json({ 
+            success: true, 
+            slots: slots.map(s => s.datetime),
+            assetDetails: slots // Provide full object for newer UI if needed
+        });
     } catch (error) {
         console.error("Slot generation error:", error);
         res.status(500).json({ success: false, error: "Failed to generate slots" });
@@ -237,6 +276,34 @@ router.post("/bump", async (req, res) => {
         }
 
         const result = bumpAndReschedule(highPrioritySession, scheduledSessions, availableSlots || []);
+
+        if (result.bumped) {
+            const formatDT = (dt) => new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+
+            // 1. Alert Bumped Patient
+            if (result.bumpedSession.patientEmail || result.bumpedSession.email) {
+                const targetEmail = result.bumpedSession.patientEmail || result.bumpedSession.email;
+                await sendEmail({
+                    to: targetEmail,
+                    subject: "⚠️ Urgent Update: Session Rescheduled",
+                    html: `<p>Namaste,</p><p>Your session for <b>${result.bumpedSession.therapy}</b> has been rescheduled to accommodate an acute care requirement.</p>
+                           <p><b>New Time:</b> ${result.bumpedSession.newDatetime ? formatDT(result.bumpedSession.newDatetime) : 'Please check your dashboard to reschedule'}</p>
+                           <p>We apologize for the inconvenience and appreciate your understanding. 🙏</p>`
+                });
+            }
+
+            // 2. Alert High-Priority (Inserted) Patient
+            if (result.insertedSession.patientEmail || result.insertedSession.email) {
+                const targetEmail = result.insertedSession.patientEmail || result.insertedSession.email;
+                await sendEmail({
+                    to: targetEmail,
+                    subject: "🌿 High-Priority Session Confirmed",
+                    html: `<p>Namaste,</p><p>A critical priority slot has been secured for your <b>${result.insertedSession.therapy}</b> session.</p>
+                           <p><b>Confirmed Time:</b> ${formatDT(result.insertedSession.datetime)}</p>
+                           <p>Please arrive 15 minutes early. 🙏</p>`
+                });
+            }
+        }
 
         res.json({ success: true, ...result });
     } catch (error) {

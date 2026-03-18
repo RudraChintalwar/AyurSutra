@@ -36,7 +36,7 @@ duration_reg = None
 
 def load_models():
     """Load ML models on startup."""
-    global model, embedder, mlb, threshold, severity_clf, session_reg, duration_reg
+    global model, embedder, mlb, threshold, severity_clf, session_reg, duration_reg, cnn_auth_model, cnn_tokenizer
 
     models_dir = os.path.join(os.path.dirname(__file__), "models")
     data_dir = os.path.join(os.path.dirname(__file__), "data")
@@ -99,6 +99,22 @@ def load_models():
     except Exception as e:
         print(f"⚠️  Error loading RF models: {e}")
 
+    # Load CNN Auth model
+    try:
+        import tensorflow as tf
+        import joblib
+        cnn_path = os.path.join(models_dir, "cnn_auth.keras")
+        tok_path = os.path.join(models_dir, "cnn_tokenizer.joblib")
+        if os.path.exists(cnn_path) and os.path.exists(tok_path):
+            cnn_auth_model = tf.keras.models.load_model(cnn_path)
+            cnn_tokenizer = joblib.load(tok_path)
+            print("✅ Loaded CNN Authentication Model")
+        else:
+            cnn_auth_model, cnn_tokenizer = None, None
+            print("⚠️  CNN Auth Model not found")
+    except Exception as e:
+        print(f"⚠️  Error loading CNN Auth Model: {e}")
+
 
 # ─── Request/Response models ─────────────────────────────
 class PredictionRequest(BaseModel):
@@ -123,6 +139,10 @@ class SessionPredRequest(BaseModel):
     dosha: str = "Unknown"
     age: int = 35
     gender: str = "Unknown"
+
+class AuthRequest(BaseModel):
+    text: str = ""
+    image_base64: str = ""
 
 
 class PredictionResponse(BaseModel):
@@ -315,12 +335,46 @@ async def predict_sessions(request: SessionPredRequest):
 
 # ─── OCR + CNN Pharmaceutical Authentication ─────────────
 @app.post("/authenticate-medicine")
-async def authenticate_medicine(text: str = "", image_base64: str = ""):
+async def authenticate_medicine(request: AuthRequest):
     """
     Authenticate Ayurvedic medicine labels.
     Accepts either extracted text or base64 image.
     Uses keyword matching + confidence scoring (CNN placeholder).
     """
+    analysis_text = request.text.lower() if request.text else ""
+
+    # OCR simulation: if base64 image provided, extract text (placeholder)
+    if request.image_base64 and not request.text:
+        # In production, use Tesseract OCR here
+        analysis_text = "unable to process image - provide extracted text"
+
+    if not analysis_text:
+        return {"authenticated": False, "confidence": 0, "reason": "No text provided"}
+
+    # ─── CNN Model Prediction ─────────────────────────────────
+    if 'cnn_auth_model' in globals() and cnn_auth_model is not None and cnn_tokenizer is not None:
+        try:
+            from tensorflow.keras.preprocessing.sequence import pad_sequences
+            seq = cnn_tokenizer.texts_to_sequences([analysis_text])
+            padded = pad_sequences(seq, maxlen=20, padding='post')
+            pred = cnn_auth_model.predict(padded, verbose=0)[0][0]
+            
+            is_authentic = bool(pred > 0.5)
+            confidence = float(pred if is_authentic else 1.0 - pred)
+            
+            return {
+                "authenticated": is_authentic,
+                "confidence": round(confidence, 3),
+                "classification": "Authentic" if is_authentic else "Suspicious/Counterfeit",
+                "formulation": analysis_text[:50].title(),
+                "ingredient_matches": 0,
+                "manufacturer_verified": is_authentic,
+                "model_used": "CNN Text Classifier"
+            }
+        except Exception as e:
+            print(f"CNN prediction error: {e}")
+
+    # ─── Fallback string matching if CNN fails ────────────────
     # Known authentic Ayurvedic formulations database
     AUTHENTIC_FORMULATIONS = {
         "triphala": {"ingredients": ["amalaki", "bibhitaki", "haritaki"], "manufacturer": ["dabur", "patanjali", "himalaya", "baidyanath"]},
@@ -331,11 +385,6 @@ async def authenticate_medicine(text: str = "", image_base64: str = ""):
         "guggulu": {"ingredients": ["commiphora wightii", "guggul"], "manufacturer": ["dabur", "baidyanath", "patanjali"]},
     }
 
-    analysis_text = text.lower() if text else ""
-
-    # OCR simulation: if base64 image provided, extract text (placeholder)
-    if image_base64 and not text:
-        # In production, use Tesseract OCR here
         analysis_text = "unable to process image - provide extracted text"
 
     if not analysis_text:

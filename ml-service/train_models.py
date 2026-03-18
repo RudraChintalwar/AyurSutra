@@ -114,4 +114,61 @@ if __name__ == "__main__":
     print(f"  ✅ Saved to {sess_path}")
     print(f"  ✅ Saved to {dur_path}")
     
+    # ─── Train CNN Text Classifier (Medicine Auth) ───────
+    print("\nTraining CNN for Pharmaceutical Authentication...")
+    try:
+        import tensorflow as tf
+        from tensorflow.keras.preprocessing.text import Tokenizer
+        from tensorflow.keras.preprocessing.sequence import pad_sequences
+        
+        # Synthetic data: Authentic vs Counterfeit/Unknown labels
+        auth_texts = [
+            "Triphala Churna 100g Pure Herbal", "Ashwagandha Root Extract 500mg", 
+            "Brahmi Vati with Gold", "Chyawanprash Awaleha Special",
+            "Kumkumadi Tailam Authentic", "Dashamoola Arishta 450ml",
+            "Amritarishta classical formulation", "Shatavari Gulam 250g"
+        ] * 10
+        fake_texts = [
+            "Tryphala Powder fake", "Ashwandga pills unknown", 
+            "Brahmí fake supplement", "Chyawanprsh sweet jelly", 
+            "Herbal oil unmarked", "Dashmool liquid generic",
+            "Amrit syrup", "Shatvar compound"
+        ] * 10
+        
+        X_text = auth_texts + fake_texts
+        y_cnn = np.array([1]*len(auth_texts) + [0]*len(fake_texts))
+        
+        vocab_size = 1000
+        max_length = 20
+        
+        tokenizer = Tokenizer(num_words=vocab_size, oov_token="<OOV>")
+        tokenizer.fit_on_texts(X_text)
+        X_seq = tokenizer.texts_to_sequences(X_text)
+        X_padded = pad_sequences(X_seq, maxlen=max_length, padding='post')
+        
+        X_tr, X_te, y_tr, y_te = train_test_split(X_padded, y_cnn, test_size=0.2, random_state=42)
+        
+        cnn_model = tf.keras.Sequential([
+            tf.keras.layers.Embedding(vocab_size, 16, input_length=max_length),
+            tf.keras.layers.Conv1D(filters=32, kernel_size=3, activation='relu'),
+            tf.keras.layers.GlobalMaxPooling1D(),
+            tf.keras.layers.Dense(10, activation='relu'),
+            tf.keras.layers.Dense(1, activation='sigmoid')
+        ])
+        
+        cnn_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        cnn_model.fit(X_tr, y_tr, epochs=10, validation_data=(X_te, y_te), verbose=0)
+        
+        loss, cnn_acc = cnn_model.evaluate(X_te, y_te, verbose=0)
+        print(f"  ✅ CNN Auth Model accuracy: {cnn_acc:.2%}")
+        
+        cnn_path = os.path.join(models_dir, "cnn_auth.keras")
+        tok_path = os.path.join(models_dir, "cnn_tokenizer.joblib")
+        cnn_model.save(cnn_path)
+        joblib.dump(tokenizer, tok_path)
+        print(f"  ✅ Saved CNN to {cnn_path}")
+        print(f"  ✅ Saved Tokenizer to {tok_path}")
+    except ImportError as e:
+        print(f"  ⚠️ Skipping CNN training due to missing dependency: {e}")
+
     print("\n🎉 All models trained and saved successfully!")

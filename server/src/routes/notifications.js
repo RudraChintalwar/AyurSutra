@@ -58,6 +58,8 @@ async function sendEmail({ to, subject, html, text }) {
     return "logged";
 }
 
+export { sendEmail };
+
 // ─── Send email notification ─────────────────────────────
 router.post("/send-email", async (req, res) => {
     try {
