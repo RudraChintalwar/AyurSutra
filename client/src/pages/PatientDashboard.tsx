@@ -139,10 +139,14 @@ const PatientDashboard = () => {
             </div>
             <div className="text-sm text-muted-foreground">Completed</div>
           </div>
-          <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
-            <div className="text-2xl font-bold text-ayur-soft-gold">85%</div>
-            <div className="text-sm text-muted-foreground">Recovery Progress</div>
-          </div>
+            <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
+              <div className="text-2xl font-bold text-ayur-soft-gold">
+                {currentPatient?.llm_recommendation
+                  ? Math.min(Math.round((completedSessions.length / (currentPatient.llm_recommendation.sessions_recommended || 1)) * 100), 100)
+                  : (patientSessions.length > 0 ? Math.round((completedSessions.length / patientSessions.length) * 100) : 0)}%
+              </div>
+              <div className="text-sm text-muted-foreground">Recovery Progress</div>
+            </div>
           <div className="text-center p-3 bg-green-50 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
               {currentPatient?.llm_recommendation?.priority_score || 'N/A'}
@@ -180,11 +184,19 @@ const PatientDashboard = () => {
                       Session {session.session_number} • {session.duration_minutes} minutes
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Badge variant="outline" className="text-xs mb-2">
+                  <div className="text-right flex flex-col items-end gap-1">
+                    <Badge variant="outline" className="text-xs">
                       Scheduled
                     </Badge>
-                    <div className="text-xs text-muted-foreground">
+                    {session.doctor_approval && (
+                      <Badge 
+                        variant={session.doctor_approval === 'approved' ? 'default' : session.doctor_approval === 'rejected' ? 'destructive' : 'secondary'} 
+                        className="text-[10px]"
+                      >
+                        {session.doctor_approval === 'approved' ? '✅ Doctor Approved' : session.doctor_approval === 'rejected' ? '❌ Needs Revision' : '✏️ Doctor Modified'}
+                      </Badge>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-1">
                       Click to view details
                     </div>
                   </div>

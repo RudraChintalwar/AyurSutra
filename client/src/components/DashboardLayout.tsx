@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { 
   LogOut, 
   Bell, 
@@ -29,9 +31,26 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
   const { toast } = useToast();
   
-  const [notificationCount, setNotificationCount] = useState(3);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+
+  // Fetch dynamic notification count from Firestore
+  useEffect(() => {
+    const fetchNotificationCount = async () => {
+      if (!user?.uid) return;
+      try {
+        const sessionsQuery = role === 'doctor'
+          ? query(collection(db, 'sessions'), where('status', '==', 'scheduled'))
+          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid), where('status', '==', 'scheduled'));
+        const snap = await getDocs(sessionsQuery);
+        setNotificationCount(snap.size);
+      } catch (err) {
+        console.error('Error fetching notification count:', err);
+      }
+    };
+    fetchNotificationCount();
+  }, [user, role]);
 
   // Page transition loading
   useEffect(() => {

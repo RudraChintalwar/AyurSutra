@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import SessionDetailsModal from '@/components/SessionDetailsModal';
 import SessionSchedulingModal from '@/components/SessionSchedulingModal';
+import SchedulingWizard from '@/components/SchedulingWizard';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,15 +27,15 @@ import {
   AlertCircle,
   Filter
 } from 'lucide-react';
-import { mockData, Session } from '@/data/mockData';
 import { useToast } from '@/hooks/use-toast';
 
 const PatientSessions = () => {
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [selectedSession, setSelectedSession] = useState<any | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeTab, setActiveTab] = useState('upcoming');
   const [isSchedulingOpen, setIsSchedulingOpen] = useState(false);
+  const [showAIWizard, setShowAIWizard] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -57,6 +58,42 @@ const PatientSessions = () => {
   }, [user]);
 
   const currentPatient = user as any;
+
+  // Handler for AI-driven scheduling wizard completion
+  const handleAISchedulingComplete = async (sessionData: any) => {
+    try {
+      const { recommendation, scheduledSlots } = sessionData;
+      const sessionPromises = scheduledSlots.map((slot: string, index: number) => {
+        return addDoc(collection(db, 'sessions'), {
+          patient_id: user?.uid || '',
+          patient_name: user?.name || 'Patient',
+          practitioner_id: 'dr1',
+          datetime: new Date(slot).toISOString(),
+          duration_minutes: 90,
+          status: 'scheduled',
+          therapy: recommendation.therapy,
+          session_number: index + 1,
+          priority: recommendation.priority_score,
+          created_at: new Date().toISOString()
+        });
+      });
+      await Promise.all(sessionPromises);
+      toast({
+        title: "AI Sessions Scheduled! 🎉",
+        description: `Booked ${scheduledSlots.length} ${recommendation.therapy} sessions.`
+      });
+      // Refresh sessions
+      const q = query(collection(db, 'sessions'), where('patient_id', '==', user?.uid));
+      const snap = await getDocs(q);
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a: any, b: any) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
+      setSessions(data);
+    } catch (err) {
+      console.error('Error:', err);
+      toast({ title: "Error", description: "Failed to schedule sessions.", variant: "destructive" });
+    }
+  };
+
   const upcomingSessions = sessions.filter(s => s.status === 'scheduled');
   const completedSessions = sessions.filter(s => s.status === 'completed');
   const allSessions = sessions;
@@ -101,10 +138,16 @@ const PatientSessions = () => {
             Track your Panchakarma journey and upcoming appointments
           </p>
         </div>
-        <Button className="ayur-button-accent" onClick={handleBookSession}>
-          <Plus className="w-4 h-4 mr-2" />
-          Book New Session
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={() => setShowAIWizard(true)}>
+            <Activity className="w-4 h-4 mr-2" />
+            AI Smart Schedule
+          </Button>
+          <Button className="ayur-button-accent" onClick={handleBookSession}>
+            <Plus className="w-4 h-4 mr-2" />
+            Quick Book
+          </Button>
+        </div>
       </div>
 
       {/* Treatment Progress Overview */}
@@ -422,6 +465,11 @@ const PatientSessions = () => {
       <SessionSchedulingModal
         isOpen={isSchedulingOpen}
         onClose={() => setIsSchedulingOpen(false)}
+      />
+      <SchedulingWizard
+        isOpen={showAIWizard}
+        onClose={() => setShowAIWizard(false)}
+        onComplete={handleAISchedulingComplete}
       />
       
       {/* Filter Modal */}

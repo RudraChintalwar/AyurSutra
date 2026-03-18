@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,9 +76,52 @@ const DoctorDashboard = () => {
       
       const { patient, recommendation, scheduledSlots } = sessionData;
       
-      const sessionPromises = scheduledSlots.map((slot: string, index: number) => {
+      // Try to find existing patient by phone/email in Firestore to get real user ID
+      let realPatientId = 'new_patient';
+      try {
+        if (patient.phone) {
+          const phoneQuery = query(collection(db, 'users'), where('phone', '==', patient.phone));
+          const phoneSnap = await getDocs(phoneQuery);
+          if (!phoneSnap.empty) {
+            realPatientId = phoneSnap.docs[0].id;
+          }
+        }
+        if (realPatientId === 'new_patient' && patient.email) {
+          const emailQuery = query(collection(db, 'users'), where('email', '==', patient.email));
+          const emailSnap = await getDocs(emailQuery);
+          if (!emailSnap.empty) {
+            realPatientId = emailSnap.docs[0].id;
+          }
+        }
+      } catch (e) {
+        console.error('Error looking up patient:', e);
+      }
+
+      // Check for time conflicts before scheduling
+      const conflictChecks = await Promise.all(
+        scheduledSlots.map(async (slot: string) => {
+          const conflictQ = query(
+            collection(db, 'sessions'),
+            where('datetime', '==', new Date(slot).toISOString()),
+            where('status', '==', 'scheduled')
+          );
+          const snap = await getDocs(conflictQ);
+          return { slot, hasConflict: !snap.empty };
+        })
+      );
+      const conflicts = conflictChecks.filter(c => c.hasConflict);
+      if (conflicts.length > 0) {
+        toast({
+          title: "Schedule Conflict Detected! ⚠️",
+          description: `${conflicts.length} slot(s) already booked. Non-conflicting slots will be scheduled.`,
+          variant: "destructive"
+        });
+      }
+      const validSlots = conflictChecks.filter(c => !c.hasConflict).map(c => c.slot);
+      
+      const sessionPromises = validSlots.map((slot: string, index: number) => {
         return addDoc(collection(db, 'sessions'), {
-          patient_id: patient.id || 'new_patient', // Would be real user ID in production
+          patient_id: realPatientId,
           patient_name: patient.name,
           practitioner_id: user?.uid || 'dr1',
           datetime: new Date(slot).toISOString(),
@@ -110,7 +153,7 @@ const DoctorDashboard = () => {
 
       toast({
         title: "Sessions Scheduled",
-        description: `Successfully scheduled ${scheduledSlots.length} sessions for ${patient.name}.`
+        description: `Successfully scheduled ${validSlots.length} sessions for ${patient.name}.`
       });
       
       // Refresh the data!
@@ -134,6 +177,29 @@ const DoctorDashboard = () => {
     setShowPatientDetails(true);
   };
 
+  // Phase D: Doctor Approval Workflow
+  const handleApproval = async (sessionId: string, status: 'approved' | 'modified' | 'rejected') => {
+    try {
+      const sessionRef = doc(db, 'sessions', sessionId);
+      await updateDoc(sessionRef, {
+        doctor_approval: status,
+        approved_at: new Date().toISOString(),
+        approved_by: user?.uid || 'doctor',
+      });
+      toast({
+        title: status === 'approved' ? 'Plan Approved ✅' : status === 'rejected' ? 'Plan Rejected ❌' : 'Plan Modified ✏️',
+        description: `Treatment plan has been ${status}.`
+      });
+      // Refresh sessions
+      const sessionsQ = collection(db, 'sessions');
+      const sSnap = await getDocs(sessionsQ);
+      setSessions(sSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error('Approval error:', err);
+      toast({ title: 'Error', description: 'Failed to update approval status.', variant: 'destructive' });
+    }
+  };
+
   const handleNotificationClick = () => {
     toast({
       title: "Notifications",
@@ -146,7 +212,7 @@ const DoctorDashboard = () => {
   const priorityQueue = sessions
     .map(session => {
       const patient = patients.find(p => p.id === session.patient_id || p.uid === session.patient_id);
-      return { ...session, patient, priority: patient?.llm_recommendation?.priority_score || 0 };
+      return { ...session, patient, priority: session.priority || patient?.llm_recommendation?.priority_score || 50 };
     })
     .filter(session => session.patient)
     .sort((a, b) => b.priority - a.priority);
@@ -293,8 +359,34 @@ const DoctorDashboard = () => {
                       <Badge className={`${getPriorityBadge(item.priority).className} text-xs animate-pulse-gentle`}>
                         {item.priority}
                       </Badge>
+                      {item.doctor_approval && (
+                        <div className="text-xs mt-1">
+                          {item.doctor_approval === 'approved' ? '✅' : item.doctor_approval === 'rejected' ? '❌' : '✏️'}
+                        </div>
+                      )}
                     </div>
                   </div>
+                  {/* Approval Buttons */}
+                  {!item.doctor_approval && (
+                    <div className="flex items-center space-x-1 mt-2 pt-2 border-t border-muted/30">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-6 px-2 text-green-600 hover:bg-green-50"
+                        onClick={(e) => { e.stopPropagation(); handleApproval(item.id, 'approved'); }}
+                      >
+                        ✅ Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-6 px-2 text-red-600 hover:bg-red-50"
+                        onClick={(e) => { e.stopPropagation(); handleApproval(item.id, 'rejected'); }}
+                      >
+                        ❌ Reject
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

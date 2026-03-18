@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,15 +23,31 @@ import {
   TestTube
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { mockData } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const PatientRecords = () => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [patientSessions, setPatientSessions] = useState<any[]>([]);
 
-  const currentPatientId = 'p1';
-  const currentPatient = mockData.patients.find(p => p.id === currentPatientId);
-  const patientSessions = mockData.sessions.filter(s => s.patient_id === currentPatientId);
+  const currentPatient = user as any;
+
+  useEffect(() => {
+    const fetchSessions = async () => {
+      if (!user?.uid) return;
+      try {
+        const q = query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+        const snap = await getDocs(q);
+        setPatientSessions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error('Error fetching sessions:', err);
+      }
+    };
+    fetchSessions();
+  }, [user]);
 
   // Generate medical records data
   const medicalRecords = [
@@ -82,12 +98,13 @@ const PatientRecords = () => {
     }
   ];
 
-  // Progress data for charts
-  const progressData = mockData.chart_data.p3_symptom_history.map(entry => ({
-    date: new Date(entry.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-    insomnia: entry.insomnia,
-    stiff_joints: entry.stiff_joints,
-    overall: Math.round((entry.insomnia + entry.stiff_joints) / 2)
+  // Dynamic progress data based on sessions
+  const completedCount = patientSessions.filter(s => s.status === 'completed').length;
+  const baseScore = currentPatient?.healthScore || 50;
+  const progressData = Array.from({ length: Math.max(completedCount + 1, 4) }, (_, i) => ({
+    date: `Session ${i}`,
+    overall: Math.min(baseScore + (i * 5), 100),
+    vitality: Math.min(baseScore - 10 + (i * 7), 100)
   }));
 
   const filteredRecords = medicalRecords.filter(record =>
@@ -128,7 +145,7 @@ const PatientRecords = () => {
           <Avatar className="w-24 h-24">
             <AvatarImage src={currentPatient?.avatar} alt={currentPatient?.name} />
             <AvatarFallback>
-              {currentPatient?.name?.split(' ').map(n => n[0]).join('') || 'P'}
+              {currentPatient?.name?.split(' ').map((n: string) => n[0]).join('') || 'P'}
             </AvatarFallback>
           </Avatar>
           
@@ -136,7 +153,7 @@ const PatientRecords = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-playfair text-2xl font-semibold">{currentPatient?.name}</h2>
-                <p className="text-muted-foreground">Patient ID: {currentPatientId}</p>
+                <p className="text-muted-foreground">Patient ID: {user?.uid?.slice(0, 8) || 'N/A'}</p>
               </div>
               <Badge className="dosha-vata px-3 py-1">
                 {currentPatient?.dosha} Constitution
@@ -155,12 +172,12 @@ const PatientRecords = () => {
                 <div className="text-sm text-muted-foreground">Completed</div>
               </div>
               <div className="text-center p-3 bg-accent/5 rounded-lg">
-                <div className="text-lg font-bold text-accent">85%</div>
+                <div className="text-lg font-bold text-accent">{patientSessions.length > 0 ? Math.min(Math.round((completedCount / (currentPatient?.llm_recommendation?.sessions_recommended || 5)) * 100), 100) : 0}%</div>
                 <div className="text-sm text-muted-foreground">Recovery Rate</div>
               </div>
               <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
                 <div className="text-lg font-bold text-ayur-soft-gold">
-                  {currentPatient?.llm_recommendation.priority_score}
+                  {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Health Score</div>
               </div>
@@ -180,7 +197,7 @@ const PatientRecords = () => {
               <LineChart data={progressData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="date" className="text-muted-foreground" />
-                <YAxis domain={[0, 10]} className="text-muted-foreground" />
+                <YAxis domain={[0, 100]} className="text-muted-foreground" />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: 'hsl(var(--card))', 
@@ -190,42 +207,31 @@ const PatientRecords = () => {
                 />
                 <Line 
                   type="monotone" 
-                  dataKey="insomnia" 
+                  dataKey="vitality" 
                   stroke="hsl(var(--primary))" 
                   strokeWidth={2}
-                  name="Insomnia"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="stiff_joints" 
-                  stroke="hsl(var(--accent))" 
-                  strokeWidth={2}
-                  name="Joint Stiffness"
+                  name="Vitality"
                 />
                 <Line 
                   type="monotone" 
                   dataKey="overall" 
-                  stroke="hsl(var(--ayur-soft-gold))" 
+                  stroke="hsl(var(--accent))" 
                   strokeWidth={3}
                   strokeDasharray="5 5"
-                  name="Overall"
-                />
+                  name="Overall Score"
+                />             
               </LineChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-2 gap-4 text-center">
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-1 bg-primary rounded"></div>
-              <span className="text-sm">Insomnia Severity</span>
+              <span className="text-sm">Vitality</span>
             </div>
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-1 bg-accent rounded"></div>
-              <span className="text-sm">Joint Stiffness</span>
-            </div>
-            <div className="flex items-center justify-center space-x-2">
-              <div className="w-4 h-1 bg-ayur-soft-gold rounded border-2 border-dashed border-ayur-soft-gold"></div>
-              <span className="text-sm">Overall Progress</span>
+              <span className="text-sm">Overall Score</span>
             </div>
           </div>
         </div>

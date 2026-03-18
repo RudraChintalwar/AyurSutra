@@ -13,7 +13,6 @@ import {
   CheckCircle,
   AlertTriangle
 } from 'lucide-react';
-import { mockData } from '@/data/mockData';
 
 interface FeedbackFormProps {
   sessionId: string;
@@ -50,7 +49,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const feedback = {
       submitted_at: new Date().toISOString(),
       symptom_scores: {
@@ -62,21 +61,74 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
       notes: formData.notes,
       symptoms: formData.symptoms,
       overall_satisfaction: formData.overall_satisfaction[0],
-      action: formData.pain[0] > 7 || formData.digestion[0] < 3 ? 'require_more_sessions' : 
-              formData.overall_satisfaction[0] >= 4 ? 'no_change_needed' : 'suggest_additional_rest'
+      // Detect adverse side effects for escalation
+      has_adverse_effects: formData.pain[0] > 7 || formData.digestion[0] < 3 || 
+        formData.symptoms.includes('Nausea') || formData.symptoms.includes('Dizziness')
     };
 
-    // Simulate LLM processing
-    setTimeout(() => {
-      const llmResponse = mockData.llm_responses_for_feedback.find(
-        response => response.feedback_action === feedback.action
-      );
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/api/scheduling/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          patientName: 'Patient',
+          therapy: 'Panchakarma',
+          feedback: {
+            symptomScores: feedback.symptom_scores,
+            notes: feedback.notes,
+            sideEffects: formData.symptoms.filter(s => ['Nausea', 'Dizziness'].includes(s)),
+          },
+          currentPlan: {}
+        })
+      });
+
+      const data = await response.json();
       
+      if (data.success && data.result) {
+        // If LLM recommends escalation, flag for priority boost
+        const isEscalation = ['increase_priority', 'add_session'].includes(data.result.action);
+        onSubmit({
+          feedback,
+          llmResponse: {
+            ui_message: data.result.explanation || 'Feedback analyzed by AI.',
+            action: data.result.action,
+            escalation: isEscalation,
+            updated_priority_score: data.result.updated_priority_score,
+            additional_sessions: data.result.additional_sessions,
+            care_instructions: data.result.care_instructions,
+          }
+        });
+      } else {
+        // Fallback to local logic if API fails
+        const action = feedback.has_adverse_effects ? 'require_more_sessions' :
+          feedback.overall_satisfaction >= 4 ? 'no_change_needed' : 'suggest_additional_rest';
+        onSubmit({
+          feedback,
+          llmResponse: {
+            ui_message: action === 'require_more_sessions' 
+              ? 'Based on your feedback, we recommend additional sessions.'
+              : action === 'no_change_needed'
+              ? 'Great progress! Continue as scheduled.'
+              : 'We recommend additional rest days.',
+            action,
+            escalation: action === 'require_more_sessions',
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Feedback API error:', err);
+      // Fallback
       onSubmit({
         feedback,
-        llmResponse: llmResponse?.result || mockData.llm_responses_for_feedback[1].result
+        llmResponse: {
+          ui_message: 'Feedback recorded. Your doctor will review it.',
+          action: 'pending_review',
+          escalation: feedback.has_adverse_effects,
+        }
       });
-    }, 1000);
+    }
   };
 
   const getScoreColor = (score: number, reverse = false) => {

@@ -3,7 +3,23 @@ import nodemailer from "nodemailer";
 
 const router = express.Router();
 
-// Gmail SMTP transporter (configure with app password)
+// ─── SendGrid (primary) or Gmail SMTP (fallback) ─────────
+let sendgridMail = null;
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_FROM = process.env.SENDGRID_FROM_EMAIL || "noreply@ayursutra.com";
+
+if (SENDGRID_API_KEY) {
+    try {
+        const sgMail = await import("@sendgrid/mail");
+        sgMail.default.setApiKey(SENDGRID_API_KEY);
+        sendgridMail = sgMail.default;
+        console.log("✅ SendGrid email configured");
+    } catch (e) {
+        console.log("⚠️  @sendgrid/mail not installed, falling back to Nodemailer");
+    }
+}
+
+// Gmail SMTP transporter (fallback)
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -12,19 +28,21 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// ─── Send email notification ─────────────────────────────
-router.post("/send-email", async (req, res) => {
-    try {
-        const { to, subject, html, text } = req.body;
+async function sendEmail({ to, subject, html, text }) {
+    // Try SendGrid first
+    if (sendgridMail) {
+        await sendgridMail.send({
+            to,
+            from: SENDGRID_FROM,
+            subject,
+            html: html || undefined,
+            text: text || undefined,
+        });
+        return "sent_via_sendgrid";
+    }
 
-        if (!process.env.EMAIL_USER) {
-            console.log(`[Email] To: ${to}, Subject: ${subject}`);
-            return res.json({
-                success: true,
-                message: "Email logged (SMTP not configured)",
-            });
-        }
-
+    // Fall back to Gmail SMTP
+    if (process.env.EMAIL_USER) {
         await transporter.sendMail({
             from: `"AyurSutra" <${process.env.EMAIL_USER}>`,
             to,
@@ -32,8 +50,20 @@ router.post("/send-email", async (req, res) => {
             html: html || undefined,
             text: text || undefined,
         });
+        return "sent_via_nodemailer";
+    }
 
-        res.json({ success: true, message: "Email sent successfully" });
+    // Log only
+    console.log(`[Email] To: ${to}, Subject: ${subject}`);
+    return "logged";
+}
+
+// ─── Send email notification ─────────────────────────────
+router.post("/send-email", async (req, res) => {
+    try {
+        const { to, subject, html, text } = req.body;
+        const method = await sendEmail({ to, subject, html, text });
+        res.json({ success: true, message: `Email ${method}` });
     } catch (error) {
         console.error("Email error:", error);
         res.status(500).json({
@@ -85,24 +115,13 @@ router.post("/session-reminder", async (req, res) => {
       </div>
     `;
 
-        if (!process.env.EMAIL_USER) {
-            console.log(
-                `[Session Reminder] To: ${patientEmail}, Therapy: ${therapy}, Date: ${formattedDate}`
-            );
-            return res.json({
-                success: true,
-                message: "Reminder logged (SMTP not configured)",
-            });
-        }
-
-        await transporter.sendMail({
-            from: `"AyurSutra" <${process.env.EMAIL_USER}>`,
+        const method = await sendEmail({
             to: patientEmail,
             subject: `🌿 Session Reminder: ${therapy} on ${formattedDate}`,
             html,
         });
 
-        res.json({ success: true, message: "Reminder sent" });
+        res.json({ success: true, message: `Reminder ${method}` });
     } catch (error) {
         console.error("Reminder error:", error);
         res.status(500).json({ success: false, error: "Failed to send reminder" });
