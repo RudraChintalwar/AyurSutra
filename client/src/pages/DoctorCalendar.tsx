@@ -185,12 +185,16 @@ const DoctorCalendar = () => {
               </div>
             </div>
 
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => date && setSelectedDate(date)}
-              className="rounded-lg border"
-            />
+            <div className="flex justify-center overflow-x-auto pb-2 w-full">
+              <div className="min-w-[300px] bg-card rounded-lg border shadow-sm p-4">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  className="w-full flex justify-center"
+                />
+              </div>
+            </div>
 
             <div className="mt-4 space-y-2">
               <div className="text-sm font-medium text-muted-foreground">Legend</div>

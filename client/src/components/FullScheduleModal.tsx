@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useDoctorData } from '@/hooks/useDoctorData';
 import { useToast } from '@/hooks/use-toast';
+import SessionModal from '@/components/SessionModal';
+import SchedulingWizard from '@/components/SchedulingWizard';
 
 interface FullScheduleModalProps {
   isOpen: boolean;
@@ -28,6 +30,9 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [isSchedulingWizardOpen, setIsSchedulingWizardOpen] = useState(false);
   const { sessions, patients } = useDoctorData();
   const { toast } = useToast();
 
@@ -84,17 +89,15 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
   };
 
   const handleSessionClick = (sessionId: string) => {
-    toast({
-      title: "Opening Session Details",
-      description: "Loading detailed session information...",
-    });
+    const session = sessions.find((s: any) => s.id === sessionId);
+    if (session) {
+      setSelectedSession(session);
+      setIsSessionModalOpen(true);
+    }
   };
 
   const handleNewSession = () => {
-    toast({
-      title: "Schedule New Session",
-      description: "Opening appointment booking interface...",
-    });
+    setIsSchedulingWizardOpen(true);
   };
 
   return (
@@ -203,26 +206,26 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
                       });
 
                       return (
-                        <div key={time} className="h-16 border-b relative p-1">
+                        <div key={time} className="h-20 border-b p-1 flex flex-col gap-1 overflow-y-auto overflow-x-hidden bg-white">
                           {sessionsInSlot.map((session) => {
                             const patient = patients.find((p: any) => p.id === session.patient_id);
                             return (
                               <div
                                 key={session.id}
                                 onClick={() => handleSessionClick(session.id)}
-                                className="absolute inset-1 bg-primary/10 border border-primary/20 rounded p-1 cursor-pointer hover:bg-primary/20 transition-colors"
+                                className="bg-primary/10 border border-primary/30 rounded p-1.5 cursor-pointer hover:bg-primary/20 transition-colors shrink-0 w-full"
                               >
-                                <div className="text-xs font-medium truncate">
-                                  {patient?.name}
+                                <div className="text-xs font-semibold truncate text-primary-foreground">
+                                  {patient?.name || 'Patient'}
                                 </div>
-                                <div className="text-xs text-muted-foreground truncate">
+                                <div className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
                                   {session.therapy}
                                 </div>
                                 <Badge 
                                   variant={session.status === 'completed' ? 'default' : 'outline'}
-                                  className="text-xs mt-1"
+                                  className="text-[9px] px-1 py-0 h-4 mt-1 border-primary/20"
                                 >
-                                  {session.status}
+                                  {session.status.replace('_', ' ')}
                                 </Badge>
                               </div>
                             );
@@ -299,6 +302,18 @@ const FullScheduleModal: React.FC<FullScheduleModalProps> = ({ isOpen, onClose }
           </Button>
         </div>
       </DialogContent>
+
+      <SessionModal
+        session={selectedSession}
+        isOpen={isSessionModalOpen}
+        onClose={() => setIsSessionModalOpen(false)}
+      />
+
+      <SchedulingWizard
+        isOpen={isSchedulingWizardOpen}
+        onClose={() => setIsSchedulingWizardOpen(false)}
+        onComplete={() => setIsSchedulingWizardOpen(false)}
+      />
     </Dialog>
   );
 };

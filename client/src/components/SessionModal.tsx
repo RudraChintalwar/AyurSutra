@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import FeedbackForm from './FeedbackForm';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 interface SessionModalProps {
   session: any | null;
@@ -27,6 +28,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
   const [showFeedback, setShowFeedback] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [relatedSessions, setRelatedSessions] = useState<any[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchRelated = async () => {
@@ -62,22 +64,66 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
     });
   };
 
-  const handleFeedbackSubmit = (feedbackData: any) => {
-    // Simulate processing and show LLM response
-    console.log('Feedback submitted:', feedbackData);
+  const handleFeedbackSubmit = async (feedbackData: any) => {
+    try {
+      // Update the session document in Firestore with feedback
+      const sessionRef = doc(db, 'sessions', session.id);
+      const updatePayload: any = {
+        feedback: feedbackData.feedback,
+        feedback_submitted_at: new Date().toISOString(),
+      };
+
+      // If escalation was triggered, apply the session updates
+      if (feedbackData.llmResponse?.sessionUpdate) {
+        Object.assign(updatePayload, feedbackData.llmResponse.sessionUpdate);
+      }
+
+      await updateDoc(sessionRef, updatePayload);
+
+      toast({
+        title: feedbackData.llmResponse?.escalation ? '⚠️ Escalation Triggered' : '✅ Feedback Submitted',
+        description: feedbackData.llmResponse?.ui_message || 'Your feedback has been recorded.',
+      });
+
+      // Show care instructions if any
+      if (feedbackData.llmResponse?.care_instructions?.length > 0) {
+        setTimeout(() => {
+          toast({
+            title: '📋 Care Instructions',
+            description: feedbackData.llmResponse.care_instructions.join('. '),
+          });
+        }, 1500);
+      }
+    } catch (err) {
+      console.error('Error saving feedback:', err);
+      toast({ title: 'Error', description: 'Failed to save feedback.', variant: 'destructive' });
+    }
+
     setShowFeedback(false);
     onClose();
-    
-    // Show toast with LLM response
-    setTimeout(() => {
-      alert(`LLM Analysis: ${feedbackData.llmResponse?.ui_message || 'Feedback processed successfully!'}`);
-    }, 500);
+  };
+
+  const handleRescheduleRequest = async () => {
+    try {
+      await updateDoc(doc(db, 'sessions', session.id), {
+        status: 'reschedule_requested',
+        reschedule_reason: 'Patient requested to reschedule this session'
+      });
+      toast({ title: 'Reschedule Requested', description: 'The practitioner has been notified of your request and will provide alternative slots.' });
+      onClose();
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to request reschedule.', variant: 'destructive' });
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-700 border-green-200';
       case 'scheduled': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'confirmed': return 'bg-green-100 text-green-700 border-green-200';
+      case 'pending_review': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'bumped': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'rejected': return 'bg-red-100 text-red-700 border-red-200';
       case 'cancelled': return 'bg-red-100 text-red-700 border-red-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
@@ -92,6 +138,13 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
           </DialogHeader>
           <FeedbackForm
             sessionId={session.id}
+            patientId={session.patient_id}
+            patientName={session.patient_name || patient.name}
+            patientEmail={session.patient_email}
+            therapy={session.therapy}
+            dosha={session.dosha}
+            currentSeverity={session.severity_score}
+            allSessions={relatedSessions}
             onSubmit={handleFeedbackSubmit}
             onCancel={() => setShowFeedback(false)}
           />
@@ -167,27 +220,27 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
             <TabsContent value="precautions" className="space-y-4">
               {/* Pre-procedure */}
-              {session.precautions_pre.length > 0 && (
+              {(session.precautions_pre || []).length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center text-orange-700">
                     <AlertTriangle className="w-4 h-4 mr-2" />
                     Pre-Procedure Guidelines
                   </h4>
                   <div className="space-y-2">
-                    {session.precautions_pre.map((precaution: string, index: number) => (
+                     {(session.precautions_pre || []).map((precaution: string, index: number) => (
                       <label key={index} className="flex items-center space-x-3 cursor-pointer">
                         <input 
                           type="checkbox" 
                           className="rounded"
                           onChange={(e) => {
-                            if (session.precautions_pre.length === 1) setAcknowledged(e.target.checked);
+                            if ((session.precautions_pre || []).length === 1) setAcknowledged(e.target.checked);
                           }}
                         />
                         <span className="text-sm">{precaution}</span>
                       </label>
                     ))}
                   </div>
-                  {session.status === 'scheduled' && !acknowledged && (
+                  {(session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'pending_review') && !acknowledged && (
                     <Button 
                       onClick={() => setAcknowledged(true)}
                       variant="outline" 
@@ -207,14 +260,14 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               )}
 
               {/* Post-procedure */}
-              {session.precautions_post.length > 0 && (
+              {(session.precautions_post || []).length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center text-blue-700">
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Post-Procedure Care
                   </h4>
                   <div className="space-y-2">
-                    {session.precautions_post.map((precaution: string, index: number) => (
+                     {(session.precautions_post || []).map((precaution: string, index: number) => (
                       <div key={index} className="flex items-center space-x-3">
                         <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                         <span className="text-sm">{precaution}</span>
@@ -298,7 +351,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                 </div>
               )}
 
-              {session.status === 'scheduled' && (
+              {(session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'pending_review') && (
                 <div className="text-center py-8">
                   <Clock className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">
@@ -339,9 +392,9 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               Close
             </Button>
             <div className="flex items-center space-x-3">
-              {session.status === 'scheduled' && (
-                <Button variant="outline">
-                  Reschedule Session
+              {(session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'bumped') && (
+                <Button variant="outline" onClick={handleRescheduleRequest}>
+                  Request Reschedule
                 </Button>
               )}
               {session.status === 'completed' && !session.feedback && (

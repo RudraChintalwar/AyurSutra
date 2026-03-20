@@ -3,15 +3,20 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import SessionModal from '@/components/SessionModal';
 import SchedulingWizard from '@/components/SchedulingWizard';
 import MessageModal from '@/components/MessageModal';
 import PatientDetailsModal from '@/components/PatientDetailsModal';
+import FeedbackForm from '@/components/FeedbackForm';
 import { 
   Calendar,
   Clock,
@@ -22,9 +27,19 @@ import {
   Plus,
   Users,
   TrendingUp,
-  Bell
+  Bell,
+  XCircle,
+  Edit,
+  Zap,
+  Loader2,
+  FileText,
+  Brain,
+  Stethoscope,
+  ArrowUpDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const DoctorDashboard = () => {
   const { user } = useAuth();
@@ -36,115 +51,116 @@ const DoctorDashboard = () => {
   const [showSchedulingWizard, setShowSchedulingWizard] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showPatientDetails, setShowPatientDetails] = useState(false);
+  const [showModifyPanel, setShowModifyPanel] = useState(false);
+  const [modifySessionId, setModifySessionId] = useState<string | null>(null);
+  const [modifyTherapy, setModifyTherapy] = useState('');
+  const [modifyDatetime, setModifyDatetime] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const patientsQ = query(collection(db, 'users'), where('role', '==', 'patient'));
-        const pSnap = await getDocs(patientsQ);
-        const pData = pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setPatients(pData);
-        if (pData.length > 0) setSelectedPatient(pData[0]);
+  // ─── Fetch Data ────────────────────────────────────────
+  const fetchData = async () => {
+    try {
+      const patientsQ = query(collection(db, 'users'), where('role', '==', 'patient'));
+      const pSnap = await getDocs(patientsQ);
+      const pData = pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPatients(pData);
+      if (pData.length > 0 && !selectedPatient) setSelectedPatient(pData[0]);
 
-        // To make it fully linked to this doctor: where('practitioner_id', '==', user?.uid)
-        // For testing we fetch all sessions or just those that exist
-        const sessionsQ = collection(db, 'sessions'); 
-        const sSnap = await getDocs(sessionsQ);
-        const sData = sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setSessions(sData);
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      }
-    };
-    fetchData();
-  }, [user]);
+      const sessionsQ = collection(db, 'sessions'); 
+      const sSnap = await getDocs(sessionsQ);
+      const sData = sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSessions(sData);
+    } catch (err) {
+      console.error("Error fetching dashboard data:", err);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [user]);
 
   const handleSessionClick = (session: any) => {
     setSelectedSession(session);
     setShowSessionModal(true);
   };
 
+  // ─── Scheduling Complete Handler ───────────────────────
   const handleSchedulingComplete = async (sessionData: any) => {
-    console.log('New session scheduled:', sessionData);
-    
     try {
-      // Find or create the patient ID (for now we assume patient name or ID comes through)
-      // Since it's a wizard that gathers name, phone, etc., we probably need to create a user doc 
-      // if they don't exist. For MVP scheduling, let's just create the session records.
-      
       const { patient, recommendation, scheduledSlots } = sessionData;
       
-      // Try to find existing patient by phone/email in Firestore to get real user ID
+      // Find real patient in Firestore
       let realPatientId = 'new_patient';
+      let patientEmail = patient.email || '';
       try {
+        let lookupQuery = query(collection(db, 'users'), where('name', '==', patient.name));
         if (patient.phone) {
-          const phoneQuery = query(collection(db, 'users'), where('phone', '==', patient.phone));
-          const phoneSnap = await getDocs(phoneQuery);
-          if (!phoneSnap.empty) {
-            realPatientId = phoneSnap.docs[0].id;
-          }
+          lookupQuery = query(collection(db, 'users'), where('phone', '==', patient.phone));
+        } else if (patient.email) {
+          lookupQuery = query(collection(db, 'users'), where('email', '==', patient.email));
         }
-        if (realPatientId === 'new_patient' && patient.email) {
-          const emailQuery = query(collection(db, 'users'), where('email', '==', patient.email));
-          const emailSnap = await getDocs(emailQuery);
-          if (!emailSnap.empty) {
-            realPatientId = emailSnap.docs[0].id;
-          }
+        
+        const pSnap = await getDocs(lookupQuery);
+        if (!pSnap.empty) {
+          realPatientId = pSnap.docs[0].id;
+          patientEmail = pSnap.docs[0].data().email || patientEmail;
+          
+          // Update patient profile with symptoms and AI recommendation
+          await updateDoc(doc(db, 'users', realPatientId), {
+            symptoms: patient.symptoms.map((s: string) => ({
+              name: s,
+              score: patient.symptomScores[s] || 5
+            })),
+            llm_recommendation: recommendation,
+            reason_for_visit: patient.reason || ''
+          });
         }
       } catch (e) {
         console.error('Error looking up patient:', e);
       }
 
-      // Check for time conflicts before scheduling
-      const conflictChecks = await Promise.all(
-        scheduledSlots.map(async (slot: string) => {
-          const conflictQ = query(
-            collection(db, 'sessions'),
-            where('datetime', '==', new Date(slot).toISOString()),
-            where('status', '==', 'scheduled')
-          );
-          const snap = await getDocs(conflictQ);
-          return { slot, hasConflict: !snap.empty };
-        })
-      );
-      const conflicts = conflictChecks.filter(c => c.hasConflict);
-      if (conflicts.length > 0) {
-        toast({
-          title: "Schedule Conflict Detected! ⚠️",
-          description: `${conflicts.length} slot(s) already booked. Non-conflicting slots will be scheduled.`,
-          variant: "destructive"
-        });
-      }
-      const validSlots = conflictChecks.filter(c => !c.hasConflict).map(c => c.slot);
-      
-      const sessionPromises = validSlots.map((slot: string, index: number) => {
+      // Calculate priority for each session
+      const severityScore = recommendation.severity_score || recommendation.priority_score / 10 || 5;
+
+      // Create sessions with pending_review status
+      const sessionPromises = scheduledSlots.map((slot: string, index: number) => {
+        const priorityResult = {
+          totalScore: recommendation.priority_score || 50,
+        };
+
         return addDoc(collection(db, 'sessions'), {
           patient_id: realPatientId,
           patient_name: patient.name,
+          patient_email: patientEmail,
           practitioner_id: user?.uid || 'dr1',
           datetime: new Date(slot).toISOString(),
-          duration_minutes: recommendation.therapy.includes('Vamana') ? 120 : 90,
-          status: 'scheduled',
+          duration_minutes: recommendation.therapy?.includes('Vamana') ? 120 : 90,
+          status: 'pending_review',
           therapy: recommendation.therapy,
           session_number: index + 1,
-          priority: recommendation.priority_score,
+          total_sessions: scheduledSlots.length,
+          severity_score: severityScore,
+          priority: priorityResult.totalScore,
+          totalPriorityScore: priorityResult.totalScore,
+          feedback_multiplier: 1.0,
+          feedback_escalation: false,
+          clinical_summary: recommendation.clinical_summary || recommendation.explanation || '',
+          dosha: patient.constitution || '',
           created_at: new Date().toISOString()
         });
       });
       
       await Promise.all(sessionPromises);
       
-      // Send email notification for the first scheduled slot
-      if (patient.email && scheduledSlots.length > 0) {
+      // Send notification
+      if (patientEmail && scheduledSlots.length > 0) {
         try {
-          await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/notifications/session-reminder`, {
-            patientEmail: patient.email,
+          await axios.post(`${API_URL}/api/notifications/session-reminder`, {
+            patientEmail,
             patientName: patient.name,
             therapy: recommendation.therapy,
             datetime: scheduledSlots[0],
-            precautions: ["Please arrive 10 minutes early for prep", "Avoid heavy meals 2 hours before the session"]
+            precautions: recommendation.precautions_pre || ["Please arrive 10 minutes early"]
           });
         } catch (e) {
           console.error("Failed to send email notification", e);
@@ -152,15 +168,11 @@ const DoctorDashboard = () => {
       }
 
       toast({
-        title: "Sessions Scheduled",
-        description: `Successfully scheduled ${validSlots.length} sessions for ${patient.name}.`
+        title: "Sessions Created — Pending Review 📋",
+        description: `${scheduledSlots.length} sessions for ${patient.name} are now pending doctor approval.`
       });
       
-      // Refresh the data!
-      const sessionsQ = collection(db, 'sessions'); 
-      const sSnap = await getDocs(sessionsQ);
-      setSessions(sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      
+      await fetchData();
     } catch (error: any) {
       console.error("Error saving sessions:", error);
       toast({
@@ -173,54 +185,131 @@ const DoctorDashboard = () => {
     setShowSchedulingWizard(false);
   };
 
-  const handleViewFullProfile = () => {
-    setShowPatientDetails(true);
-  };
-
-  // Phase D: Doctor Approval Workflow
-  const handleApproval = async (sessionId: string, status: 'approved' | 'modified' | 'rejected') => {
+  // ─── Doctor Approval Workflow ──────────────────────────
+  const handleApproval = async (sessionId: string, action: 'approved' | 'modified' | 'rejected') => {
+    setActionLoading(sessionId);
     try {
-      const sessionRef = doc(db, 'sessions', sessionId);
-      await updateDoc(sessionRef, {
-        doctor_approval: status,
-        approved_at: new Date().toISOString(),
-        approved_by: user?.uid || 'doctor',
+      // Call backend review endpoint
+      const response = await axios.post(`${API_URL}/api/scheduling/appointments/${sessionId}/review`, {
+        action,
+        doctorId: user?.uid,
+        doctorName: user?.name,
+        modifiedTherapy: action === 'modified' ? modifyTherapy : undefined,
+        modifiedDatetime: action === 'modified' && modifyDatetime ? modifyDatetime : undefined,
       });
-      toast({
-        title: status === 'approved' ? 'Plan Approved ✅' : status === 'rejected' ? 'Plan Rejected ❌' : 'Plan Modified ✏️',
-        description: `Treatment plan has been ${status}.`
-      });
-      // Refresh sessions
-      const sessionsQ = collection(db, 'sessions');
-      const sSnap = await getDocs(sessionsQ);
-      setSessions(sSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      if (response.data.success) {
+        // Apply updates to Firestore
+        const sessionRef = doc(db, 'sessions', sessionId);
+        await updateDoc(sessionRef, response.data.updateData);
+
+        // If approved, send confirmation email to patient
+        const session = sessions.find(s => s.id === sessionId);
+        if (action === 'approved' && session?.patient_email) {
+          try {
+            await axios.post(`${API_URL}/api/notifications/session-reminder`, {
+              patientEmail: session.patient_email,
+              patientName: session.patient_name,
+              therapy: session.therapy,
+              datetime: session.datetime,
+              precautions: ["Your session has been confirmed by the doctor", "Please arrive 15 minutes early"]
+            });
+          } catch (e) {
+            console.error("Email notification failed:", e);
+          }
+        }
+
+        toast({
+          title: action === 'approved' ? 'Plan Approved ✅' : action === 'rejected' ? 'Plan Rejected ❌' : 'Plan Modified ✏️',
+          description: `Treatment plan has been ${action} by Dr. ${user?.name || 'Doctor'}.`
+        });
+
+        setShowModifyPanel(false);
+        setModifySessionId(null);
+        await fetchData();
+      }
     } catch (err) {
       console.error('Approval error:', err);
-      toast({ title: 'Error', description: 'Failed to update approval status.', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to process review.', variant: 'destructive' });
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const handleNotificationClick = () => {
-    toast({
-      title: "Notifications",
-      description: "Opening notification center...",
-    });
-    navigate('/doctor/messages');
+  // ─── Emergency Bump ────────────────────────────────────
+  const handleEmergencyBump = async (session: any) => {
+    setActionLoading(session.id);
+    try {
+      const allScheduled = sessions.filter(s => s.status === 'confirmed' || s.status === 'scheduled');
+      const response = await axios.post(`${API_URL}/api/scheduling/check-conflicts`, {
+        highPrioritySession: {
+          ...session,
+          patientEmail: session.patient_email,
+          email: session.patient_email,
+          totalPriorityScore: session.totalPriorityScore || session.priority || 90,
+        },
+        allScheduledSessions: allScheduled,
+        availableSlots: allScheduled.map(s => s.datetime),
+      });
+
+      if (response.data.bumped) {
+        // Update bumped session in Firestore
+        if (response.data.bumpedSession?.sessionId || response.data.bumpedSession?.id) {
+          const bumpedId = response.data.bumpedSession.sessionId || response.data.bumpedSession.id;
+          await updateDoc(doc(db, 'sessions', bumpedId), {
+            status: 'bumped',
+            bumped_reason: response.data.bumpedSession.reason,
+            original_datetime: response.data.bumpedSession.datetime,
+            datetime: response.data.bumpedSession.newDatetime || response.data.bumpedSession.datetime,
+          });
+        }
+
+        toast({
+          title: "Emergency Bump Executed ⚡",
+          description: `${session.patient_name} has been given priority. Bumped patient notified.`
+        });
+        await fetchData();
+      } else {
+        toast({
+          title: "No Bump Needed",
+          description: response.data.reason || "Slot is available without conflict.",
+        });
+      }
+    } catch (err) {
+      console.error("Bump error:", err);
+      toast({ title: "Bump Failed", description: "Could not execute emergency bump.", variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  // Get sessions sorted by priority for practitioner view
+  // ─── Priority Queue (computed) ─────────────────────────
   const priorityQueue = sessions
     .map(session => {
       const patient = patients.find(p => p.id === session.patient_id || p.uid === session.patient_id);
-      return { ...session, patient, priority: session.priority || patient?.llm_recommendation?.priority_score || 50 };
+      const computedPriority = session.totalPriorityScore || session.priority || patient?.llm_recommendation?.priority_score || 50;
+      return { ...session, patient, computedPriority };
     })
-    .filter(session => session.patient)
-    .sort((a, b) => b.priority - a.priority);
+    .filter(session => session.status !== 'completed' && session.status !== 'rejected')
+    .sort((a, b) => b.computedPriority - a.computedPriority);
 
   const getPriorityBadge = (score: number) => {
-    if (score >= 80) return { label: 'High', className: 'priority-badge-high' };
-    if (score >= 60) return { label: 'Medium', className: 'priority-badge-medium' };
-    return { label: 'Low', className: 'priority-badge-low' };
+    if (score >= 80) return { label: 'High', className: 'bg-red-100 text-red-700 border-red-200' };
+    if (score >= 60) return { label: 'Medium', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+    return { label: 'Low', className: 'bg-green-100 text-green-700 border-green-200' };
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending_review': return { label: '🟡 Pending', className: 'bg-yellow-100 text-yellow-800' };
+      case 'confirmed': return { label: '✅ Confirmed', className: 'bg-green-100 text-green-800' };
+      case 'scheduled': return { label: '📅 Scheduled', className: 'bg-blue-100 text-blue-800' };
+      case 'completed': return { label: '🔵 Completed', className: 'bg-blue-100 text-blue-800' };
+      case 'rejected': return { label: '❌ Rejected', className: 'bg-red-100 text-red-800' };
+      case 'bumped': return { label: '⚡ Bumped', className: 'bg-purple-100 text-purple-800' };
+      case 'reschedule_requested': return { label: '⚠️ Reschedule Req', className: 'bg-orange-100 text-orange-800 animate-pulse font-bold border-orange-200' };
+      default: return { label: status, className: 'bg-gray-100 text-gray-800' };
+    }
   };
 
   const getDoshaBadge = (dosha?: string) => {
@@ -241,6 +330,11 @@ const DoctorDashboard = () => {
     });
   };
 
+  const pendingCount = sessions.filter(s => s.status === 'pending_review').length;
+  const confirmedCount = sessions.filter(s => s.status === 'confirmed' || s.status === 'scheduled').length;
+  const completedCount = sessions.filter(s => s.status === 'completed').length;
+  const highPriorityCount = priorityQueue.filter(s => s.computedPriority >= 80).length;
+
   return (
     <div className="p-6 space-y-6">
       {/* Dashboard Header */}
@@ -253,27 +347,43 @@ const DoctorDashboard = () => {
             Today's Priority Queue • {new Date().toLocaleDateString('en-IN')} • Dr. {user?.name || "Practitioner"}
           </p>
         </div>
-        <Button 
-          onClick={() => setShowSchedulingWizard(true)}
-          className="ayur-button-accent"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Schedule New Session
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button onClick={() => navigate('/doctor/messages')} variant="outline" size="sm">
+            <Bell className="w-4 h-4 mr-1" />
+            Messages
+          </Button>
+          <Button 
+            onClick={() => setShowSchedulingWizard(true)}
+            className="ayur-button-accent"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Schedule New Session
+          </Button>
+        </div>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="ayur-card p-4 animate-slide-up">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-primary/10 rounded-lg">
               <Users className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-primary">
-                {patients.length}
-              </div>
-              <div className="text-sm text-muted-foreground">Active Patients</div>
+              <div className="text-2xl font-bold text-primary">{patients.length}</div>
+              <div className="text-sm text-muted-foreground">Patients</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="ayur-card p-4 animate-slide-up" style={{ animationDelay: '0.05s' }}>
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <Clock className="w-5 h-5 text-yellow-600" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
+              <div className="text-sm text-muted-foreground">Pending Review</div>
             </div>
           </div>
         </Card>
@@ -284,37 +394,31 @@ const DoctorDashboard = () => {
               <Calendar className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-accent">
-                {sessions.filter(s => s.status === 'scheduled').length}
-              </div>
-              <div className="text-sm text-muted-foreground">Scheduled Today</div>
+              <div className="text-2xl font-bold text-accent">{confirmedCount}</div>
+              <div className="text-sm text-muted-foreground">Confirmed</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="ayur-card p-4 animate-slide-up" style={{ animationDelay: '0.15s' }}>
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{completedCount}</div>
+              <div className="text-sm text-muted-foreground">Completed</div>
             </div>
           </div>
         </Card>
 
         <Card className="ayur-card p-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-600">
-                {sessions.filter(s => s.status === 'completed').length}
-              </div>
-              <div className="text-sm text-muted-foreground">Completed</div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="ayur-card p-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-          <div className="flex items-center space-x-3">
             <div className="p-2 bg-red-100 rounded-lg">
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-red-600">
-                {priorityQueue.filter(s => s.priority >= 80).length}
-              </div>
+              <div className="text-2xl font-bold text-red-600">{highPriorityCount}</div>
               <div className="text-sm text-muted-foreground">High Priority</div>
             </div>
           </div>
@@ -322,15 +426,21 @@ const DoctorDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Priority Queue */}
+        {/* ─── Priority Queue Panel ─────────────────────── */}
         <div className="lg:col-span-1">
           <Card className="ayur-card p-6 h-fit">
-            <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
-              <AlertTriangle className="w-5 h-5 mr-2 text-accent" />
+            <h3 className="font-playfair text-xl font-semibold mb-1 flex items-center">
+              <ArrowUpDown className="w-5 h-5 mr-2 text-accent" />
               Priority Queue
             </h3>
-            <div className="space-y-3">
-              {priorityQueue.slice(0, 6).map((item, index) => (
+            <p className="text-xs text-muted-foreground mb-4">
+              Sorted by priority score (Max-Heap) • Severity 40% + Feedback 35% + Dosha 15% + Wait 10%
+            </p>
+            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+              {priorityQueue.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No sessions in queue</p>
+              )}
+              {priorityQueue.slice(0, 10).map((item, index) => (
                 <div
                   key={item.id}
                   className={`p-3 rounded-lg cursor-pointer transition-all animate-slide-up hover:scale-[1.02] ${
@@ -338,52 +448,99 @@ const DoctorDashboard = () => {
                       ? 'bg-primary/10 border border-primary/20' 
                       : 'bg-muted/30 hover:bg-muted/50'
                   }`}
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                  onClick={() => setSelectedPatient(item.patient!)}
+                  style={{ animationDelay: `${index * 0.05}s` }}
+                  onClick={() => item.patient && setSelectedPatient(item.patient)}
                 >
                   <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={item.patient?.avatar} alt={item.patient?.name} />
-                      <AvatarFallback>
-                        {item.patient?.name?.split(' ').map((n: string) => n[0]).join('') || ''}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">{item.patient?.name}</div>
-                      <div className="text-xs text-muted-foreground">{item.therapy}</div>
+                    <div className="relative">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={item.patient?.avatar} alt={item.patient?.name} />
+                        <AvatarFallback>
+                          {item.patient?.name?.split(' ').map((n: string) => n[0]).join('') || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Rank badge */}
+                      <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-primary text-white text-[10px] flex items-center justify-center font-bold">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{item.patient?.name || item.patient_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {item.therapy || 'No therapy assigned'}
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        Next: {formatDateTime(item.datetime)}
+                        {formatDateTime(item.datetime)}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <Badge className={`${getPriorityBadge(item.priority).className} text-xs animate-pulse-gentle`}>
-                        {item.priority}
+                    <div className="text-right flex flex-col items-end gap-1">
+                      <Badge className={`${getPriorityBadge(item.computedPriority).className} text-xs font-bold border`}>
+                        {item.computedPriority}
                       </Badge>
-                      {item.doctor_approval && (
-                        <div className="text-xs mt-1">
-                          {item.doctor_approval === 'approved' ? '✅' : item.doctor_approval === 'rejected' ? '❌' : '✏️'}
-                        </div>
-                      )}
+                      <Badge className={`${getStatusBadge(item.status).className} text-[10px] px-1.5`}>
+                        {getStatusBadge(item.status).label}
+                      </Badge>
                     </div>
                   </div>
-                  {/* Approval Buttons */}
-                  {!item.doctor_approval && (
+
+                  {/* Approval Buttons for pending/reschedule sessions */}
+                  {(item.status === 'pending_review' || item.status === 'reschedule_requested') && (
                     <div className="flex items-center space-x-1 mt-2 pt-2 border-t border-muted/30">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-xs h-6 px-2 text-green-600 hover:bg-green-50"
+                        className="text-xs h-7 px-2 text-green-600 hover:bg-green-50 flex-1"
+                        disabled={actionLoading === item.id}
                         onClick={(e) => { e.stopPropagation(); handleApproval(item.id, 'approved'); }}
                       >
-                        ✅ Approve
+                        {actionLoading === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle className="w-3 h-3 mr-1" /> Approve</>}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-xs h-6 px-2 text-red-600 hover:bg-red-50"
+                        className="text-xs h-7 px-2 text-amber-600 hover:bg-amber-50 flex-1"
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setModifySessionId(item.id); 
+                          setModifyTherapy(item.therapy || '');
+                          
+                          // Format existing datetime for the datetime-local input
+                          if (item.datetime) {
+                            const d = new Date(item.datetime);
+                            const pad = (n: number) => n.toString().padStart(2, '0');
+                            const formatted = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                            setModifyDatetime(formatted);
+                          }
+                          
+                          setShowModifyPanel(true); 
+                        }}
+                      >
+                        <Edit className="w-3 h-3 mr-1" /> Modify
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 px-2 text-red-600 hover:bg-red-50"
+                        disabled={actionLoading === item.id}
                         onClick={(e) => { e.stopPropagation(); handleApproval(item.id, 'rejected'); }}
                       >
-                        ❌ Reject
+                        <XCircle className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Emergency bump button for high-priority */}
+                  {item.computedPriority >= 80 && (item.status === 'confirmed' || item.status === 'scheduled' || item.status === 'pending_review') && (
+                    <div className="mt-2 pt-2 border-t border-muted/30">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 w-full text-red-600 hover:bg-red-50 border-red-200"
+                        disabled={actionLoading === item.id}
+                        onClick={(e) => { e.stopPropagation(); handleEmergencyBump(item); }}
+                      >
+                        {actionLoading === item.id ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Zap className="w-3 h-3 mr-1" />}
+                        Emergency Bump
                       </Button>
                     </div>
                   )}
@@ -393,53 +550,44 @@ const DoctorDashboard = () => {
           </Card>
         </div>
 
-        {/* Today's Schedule */}
+        {/* ─── Today's Schedule ────────────────────────── */}
         <div className="lg:col-span-1">
           <Card className="ayur-card p-6 h-fit">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Calendar className="w-5 h-5 mr-2 text-primary" />
-              Today's Schedule
+              All Sessions
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              {sessions.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No sessions found</p>
+              )}
               {sessions
-                .filter(session => {
-                  const sessionDate = new Date(session.datetime).toDateString();
-                  const today = new Date().toDateString();
-                  return sessionDate === today || session.status === 'scheduled';
-                })
+                .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
                 .map((session, index) => {
                   const patient = patients.find(p => p.id === session.patient_id || p.uid === session.patient_id);
                   return (
                     <div
                       key={session.id}
                       className="flex items-center justify-between p-3 bg-muted/30 rounded-lg animate-fade-in cursor-pointer hover:bg-muted/50 transition-colors"
-                      style={{ animationDelay: `${index * 0.1}s` }}
+                      style={{ animationDelay: `${index * 0.05}s` }}
                       onClick={() => handleSessionClick(session)}
                     >
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8">
                           <AvatarImage src={patient?.avatar} alt={patient?.name} />
                           <AvatarFallback>
-                            {patient?.name?.split(' ').map((n: string) => n[0]).join('') || ''}
+                            {patient?.name?.split(' ').map((n: string) => n[0]).join('') || session.patient_name?.charAt(0) || '?'}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-medium text-sm">{patient?.name}</div>
+                          <div className="font-medium text-sm">{patient?.name || session.patient_name}</div>
                           <div className="text-xs text-muted-foreground">{session.therapy}</div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-medium">{formatDateTime(session.datetime)}</div>
-                        <Badge 
-                          variant={session.status === 'completed' ? 'default' : 'outline'}
-                          className="text-xs mt-1"
-                        >
-                          {session.status === 'completed' ? (
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                          ) : (
-                            <Clock className="w-3 h-3 mr-1" />
-                          )}
-                          {session.status}
+                        <Badge className={`${getStatusBadge(session.status).className} text-[10px] mt-1`}>
+                          {getStatusBadge(session.status).label}
                         </Badge>
                       </div>
                     </div>
@@ -449,84 +597,195 @@ const DoctorDashboard = () => {
           </Card>
         </div>
 
-        {/* Selected Patient Detail */}
+        {/* ─── Patient Detail Panel ───────────────────── */}
         <div className="lg:col-span-1">
           <Card className="ayur-card p-6 h-fit">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
-              <User className="w-5 h-5 mr-2 text-primary" />
-              Patient Details
+              <Stethoscope className="w-5 h-5 mr-2 text-primary" />
+              Patient Clinical View
             </h3>
             {selectedPatient && (
-              <div className="animate-scale-in">
-                <div className="flex items-center space-x-3 mb-4">
-                  <Avatar className="w-16 h-16">
+              <div className="animate-scale-in space-y-4">
+                {/* Patient header */}
+                <div className="flex items-center space-x-3">
+                  <Avatar className="w-14 h-14">
                     <AvatarImage src={selectedPatient.avatar} alt={selectedPatient.name} />
                     <AvatarFallback>
-                      {selectedPatient.name.split(' ').map((n: string) => n[0]).join('')}
+                      {selectedPatient.name?.split(' ').map((n: string) => n[0]).join('')}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <h4 className="font-semibold text-lg">{selectedPatient.name}</h4>
-                    <Badge className={`${getDoshaBadge(selectedPatient.dosha)} text-xs mb-1`}>
-                      {selectedPatient.dosha}
-                    </Badge>
+                    {selectedPatient.dosha && (
+                      <Badge className={`${getDoshaBadge(selectedPatient.dosha)} text-xs mb-1`}>
+                        {selectedPatient.dosha}
+                      </Badge>
+                    )}
                     <div className="text-xs text-muted-foreground">
-                      Priority: {selectedPatient.llm_recommendation?.priority_score || 'N/A'}
+                      {selectedPatient.age && `Age: ${selectedPatient.age}`}
+                      {selectedPatient.gender && ` • ${selectedPatient.gender}`}
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">Contact</div>
-                    <div className="text-sm">{selectedPatient.phone}</div>
-                    <div className="text-sm">{selectedPatient.email}</div>
+                {/* Priority Score */}
+                <div className="p-3 rounded-lg bg-muted/30">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium flex items-center">
+                      <TrendingUp className="w-4 h-4 mr-1 text-accent" />
+                      Priority Score
+                    </span>
+                    <Badge className={`${getPriorityBadge(selectedPatient.llm_recommendation?.priority_score || 0).className} text-xs font-bold border`}>
+                      {selectedPatient.llm_recommendation?.priority_score || 'N/A'}
+                    </Badge>
                   </div>
+                  <Progress 
+                    value={selectedPatient.llm_recommendation?.priority_score || 0} 
+                    className="h-2" 
+                  />
+                </div>
 
+                {/* Contact */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">Contact</div>
+                  <div className="text-sm">{selectedPatient.phone || 'No phone'}</div>
+                  <div className="text-sm">{selectedPatient.email || 'No email'}</div>
+                </div>
+
+                {/* Chief Complaint */}
+                {selectedPatient.reason_for_visit && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground">Chief Complaint</div>
                     <div className="text-sm">{selectedPatient.reason_for_visit}</div>
                   </div>
+                )}
 
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-2">Current Symptoms</div>
-                    {selectedPatient.symptoms?.map((symptom: any, index: number) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span>{symptom.name}</span>
-                        <span className="font-medium">{symptom.score}/10</span>
-                      </div>
-                    ))}
+                {/* Symptoms with severity bars */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-2 flex items-center">
+                    <Activity className="w-4 h-4 mr-1" />
+                    Current Symptoms
                   </div>
+                  {selectedPatient.symptoms && selectedPatient.symptoms.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedPatient.symptoms.map((symptom: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between text-sm">
+                          <span className="flex-1">{symptom.name}</span>
+                          <div className="flex items-center space-x-2 ml-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full ${symptom.score >= 7 ? 'bg-red-500' : symptom.score >= 4 ? 'bg-amber-500' : 'bg-green-500'}`}
+                                style={{ width: `${symptom.score * 10}%` }}
+                              />
+                            </div>
+                            <span className="font-medium text-xs w-8 text-right">{symptom.score}/10</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No symptoms recorded yet. Patient needs to complete intake form.</p>
+                  )}
+                </div>
 
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-2">Current Treatment</div>
-                    <div className="p-3 bg-primary/5 rounded-lg">
-                      <div className="text-sm font-medium text-primary">
-                        {selectedPatient.llm_recommendation?.therapy || "No therapy recommended yet"}
+                {/* AI Suggested Treatment */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-2 flex items-center">
+                    <Brain className="w-4 h-4 mr-1" />
+                    AI Suggested Treatment
+                  </div>
+                  {selectedPatient.llm_recommendation ? (
+                    <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
+                      <div className="text-sm font-semibold text-primary">
+                        {selectedPatient.llm_recommendation.therapy}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        {selectedPatient.llm_recommendation?.sessions_recommended || 0} sessions • 
-                        Every {selectedPatient.llm_recommendation?.spacing_days || 0} days
+                        {selectedPatient.llm_recommendation.sessions_recommended} sessions • 
+                        Every {selectedPatient.llm_recommendation.spacing_days} days •
+                        Confidence: {selectedPatient.llm_recommendation.confidence || 'N/A'}%
                       </div>
+                      {selectedPatient.llm_recommendation.explanation && (
+                        <div className="text-xs mt-2 text-foreground/70 italic">
+                          "{selectedPatient.llm_recommendation.explanation}"
+                        </div>
+                      )}
+                      {selectedPatient.llm_recommendation.clinical_summary && (
+                        <div className="text-xs mt-2 p-2 bg-blue-50 rounded border border-blue-100">
+                          <span className="font-medium text-blue-700">Clinical Summary: </span>
+                          {selectedPatient.llm_recommendation.clinical_summary}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No AI recommendation yet. Schedule a session to generate one.</p>
+                  )}
+                </div>
 
-                  <div className="flex items-center space-x-2 pt-3 border-t">
-                    <Button size="sm" className="flex-1 ayur-button-hero" onClick={handleViewFullProfile}>
-                      View Full Profile
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={handleNotificationClick}>
-                      <Bell className="w-4 h-4" />
-                    </Button>
-                  </div>
+                {/* Action Buttons */}
+                <div className="flex items-center space-x-2 pt-3 border-t">
+                  <Button size="sm" className="flex-1 ayur-button-hero" onClick={() => setShowPatientDetails(true)}>
+                    <FileText className="w-4 h-4 mr-1" />
+                    Full Profile
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setShowMessageModal(true);
+                  }}>
+                    <Bell className="w-4 h-4" />
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('/doctor/calendar')}>
+                    <Calendar className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
+            )}
+            {!selectedPatient && (
+              <p className="text-sm text-muted-foreground text-center py-8">Select a patient from the priority queue</p>
             )}
           </Card>
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ─── Modify Panel (inline) ──────────────────────── */}
+      {showModifyPanel && modifySessionId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <Card className="p-6 w-full max-w-md animate-scale-in">
+            <h3 className="font-playfair text-lg font-semibold mb-4">Modify Treatment Plan</h3>
+            <div className="space-y-4">
+              <div>
+                <Label>Therapy Type</Label>
+                <Input 
+                  value={modifyTherapy} 
+                  onChange={(e) => setModifyTherapy(e.target.value)}
+                  placeholder="e.g., Virechana, Basti, Abhyanga"
+                />
+              </div>
+              <div>
+                <Label>New Date & Time (Optional)</Label>
+                <Input 
+                  type="datetime-local"
+                  value={modifyDatetime}
+                  onChange={(e) => setModifyDatetime(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button 
+                  className="flex-1" 
+                  onClick={() => handleApproval(modifySessionId, 'modified')}
+                  disabled={actionLoading === modifySessionId}
+                >
+                  {actionLoading === modifySessionId ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                  Confirm Modification
+                </Button>
+                <Button variant="outline" onClick={() => { setShowModifyPanel(false); setModifySessionId(null); }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── Modals ─────────────────────────────────────── */}
       <SessionModal
         session={selectedSession}
         isOpen={showSessionModal}

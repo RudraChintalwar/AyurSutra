@@ -62,25 +62,50 @@ const PatientSessions = () => {
   // Handler for AI-driven scheduling wizard completion
   const handleAISchedulingComplete = async (sessionData: any) => {
     try {
-      const { recommendation, scheduledSlots } = sessionData;
+      const { patient, recommendation, scheduledSlots } = sessionData;
+      
+      // Update patient profile with new symptoms and AI recommendation
+      if (user?.uid) {
+        import('firebase/firestore').then(async ({ doc, updateDoc }) => {
+          await updateDoc(doc(db, 'users', user.uid), {
+            symptoms: patient.symptoms.map((s: string) => ({
+              name: s,
+              score: patient.symptomScores[s] || 5
+            })),
+            llm_recommendation: recommendation,
+            reason_for_visit: patient.reason || ''
+          });
+        });
+      }
+
+      const severityScore = recommendation.severity_score || recommendation.priority_score / 10 || 5;
+
       const sessionPromises = scheduledSlots.map((slot: string, index: number) => {
         return addDoc(collection(db, 'sessions'), {
           patient_id: user?.uid || '',
           patient_name: user?.name || 'Patient',
+          patient_email: user?.email || '',
           practitioner_id: 'dr1',
           datetime: new Date(slot).toISOString(),
-          duration_minutes: 90,
-          status: 'scheduled',
+          duration_minutes: recommendation.therapy?.includes('Vamana') ? 120 : 90,
+          status: 'pending_review',
           therapy: recommendation.therapy,
           session_number: index + 1,
-          priority: recommendation.priority_score,
+          total_sessions: scheduledSlots.length,
+          severity_score: severityScore,
+          priority: recommendation.priority_score || recommendation.totalPriorityScore || 50,
+          totalPriorityScore: recommendation.totalPriorityScore || recommendation.priority_score || 50,
+          feedback_multiplier: 1.0,
+          feedback_escalation: false,
+          clinical_summary: recommendation.clinical_summary || recommendation.explanation || '',
+          dosha: patient.constitution || user?.dosha || '',
           created_at: new Date().toISOString()
         });
       });
       await Promise.all(sessionPromises);
       toast({
-        title: "AI Sessions Scheduled! 🎉",
-        description: `Booked ${scheduledSlots.length} ${recommendation.therapy} sessions.`
+        title: "Sessions Submitted for Review 📋",
+        description: `${scheduledSlots.length} ${recommendation.therapy} sessions pending doctor approval.`
       });
       // Refresh sessions
       const q = query(collection(db, 'sessions'), where('patient_id', '==', user?.uid));
@@ -94,8 +119,12 @@ const PatientSessions = () => {
     }
   };
 
-  const upcomingSessions = sessions.filter(s => s.status === 'scheduled');
+  const pendingReviewSessions = sessions.filter(s => s.status === 'pending_review');
+  const upcomingSessions = sessions.filter(s => 
+    s.status === 'scheduled' || s.status === 'confirmed' || s.status === 'bumped' || s.status === 'reschedule_requested'
+  );
   const completedSessions = sessions.filter(s => s.status === 'completed');
+  const bumpedSessions = sessions.filter(s => s.status === 'bumped');
   const allSessions = sessions;
 
   const handleSessionClick = (session: any) => {
@@ -253,6 +282,18 @@ const PatientSessions = () => {
                           <Badge variant="outline" className="text-xs">
                             Session {session.session_number}
                           </Badge>
+                          {session.status === 'bumped' && (
+                            <Badge className="bg-red-100 text-red-700 border-red-200 ml-2 text-xs font-semibold animate-pulse">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Emergency Rescheduled by Doctor
+                            </Badge>
+                          )}
+                          {session.status === 'confirmed' && (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 ml-2 text-xs">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Confirmed by Practitioner
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -416,7 +457,7 @@ const PatientSessions = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h4 className="font-semibold text-lg text-primary">
-                  {currentPatient.llm_recommendation.therapy}
+                  {currentPatient?.llm_recommendation?.therapy || "Pending Assessment"}
                 </h4>
                 <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                   <span>Recommended: {currentPatient?.llm_recommendation?.sessions_recommended || 0} sessions</span>

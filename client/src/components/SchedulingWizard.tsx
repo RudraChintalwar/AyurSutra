@@ -105,7 +105,12 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
       const data = await response.json();
       
       if (data.success && data.recommendation) {
-        setFormData(prev => ({ ...prev, recommendation: data.recommendation }));
+        // Store recommendation WITH severity and priority data from enhanced /predict
+        setFormData(prev => ({ ...prev, recommendation: {
+          ...data.recommendation,
+          severity_score: data.recommendation.severity_score || data.priorityResult?.totalScore / 10 || 5,
+          totalPriorityScore: data.priorityResult?.totalScore || data.recommendation.priority_score || 50,
+        }}));
         
         // 2. Generate optimal slots based on recommendation
         const slotsResponse = await fetch(`${BACKEND_URL}/api/scheduling/slots`, {
@@ -115,25 +120,28 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
             practitionerId: 'dr1',
             spacingDays: data.recommendation.spacing_days,
             sessionsNeeded: data.recommendation.sessions_recommended,
-            startDate: new Date().toISOString()
+            startDate: new Date().toISOString(),
+            therapy: data.recommendation.therapy,
           })
         });
         
         const slotsData = await slotsResponse.json();
         if (slotsData.success && slotsData.slots) {
           setMockSlots(slotsData.slots);
+          setFormData(prev => ({ ...prev, selectedSlots: slotsData.slots }));
         }
       } else {
         throw new Error(data.error || "Failed to generate recommendation");
       }
     } catch (error) {
       console.error("Error generating recommendation:", error);
-      // Fallback if API fails
       setFormData(prev => ({ ...prev, recommendation: {
         therapy: 'Abhyanga (oil massage) - Fallback',
         sessions_recommended: 3,
         spacing_days: 7,
-        priority_score: 60,
+        priority_score: 50,
+        severity_score: 5,
+        totalPriorityScore: 50,
         explanation: 'Could not connect to AI services. This is a fallback recommendation based on general wellness.',
         confidence: 70
       }}));
@@ -348,7 +356,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                     </h4>
                     <div className="flex items-center space-x-2">
                       <Badge className="priority-badge-high">
-                        Priority: {formData.recommendation.priority_score}
+                        Priority: {formData.recommendation.totalPriorityScore}
                       </Badge>
                       <Badge variant="outline">
                         <Star className="w-3 h-3 mr-1" />
@@ -378,20 +386,24 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                     </div>
                   </div>
 
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-4">
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-3">
                     {formData.recommendation.explanation}
                   </p>
 
+                  {formData.recommendation.clinical_summary && (
+                    <div className="p-2 bg-blue-50 rounded border border-blue-100 mb-4">
+                      <span className="text-xs font-medium text-blue-700">Clinical Summary: </span>
+                      <span className="text-xs text-blue-600">{formData.recommendation.clinical_summary}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center space-x-3">
-                    <Button className="ayur-button-hero">
+                    <Button className="ayur-button-hero" onClick={() => setCurrentStep(4)}>
                       <CheckCircle className="w-4 h-4 mr-2" />
-                      Accept & Schedule
+                      Accept & Select Slots
                     </Button>
-                    <Button variant="outline">
-                      Edit Recommendation
-                    </Button>
-                    <Button variant="outline">
-                      Send to Practitioner
+                    <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                      Adjust Symptoms
                     </Button>
                   </div>
                 </div>
@@ -498,7 +510,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                 className="ayur-button-accent"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Confirm & Schedule
+                Submit for Doctor Review
               </Button>
             )}
           </div>

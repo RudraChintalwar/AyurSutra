@@ -16,11 +16,21 @@ import {
 
 interface FeedbackFormProps {
   sessionId: string;
+  patientId?: string;
+  patientName?: string;
+  patientEmail?: string;
+  therapy?: string;
+  dosha?: string;
+  currentSeverity?: number;
+  allSessions?: any[];
   onSubmit: (feedback: any) => void;
   onCancel: () => void;
 }
 
-const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCancel }) => {
+const FeedbackForm: React.FC<FeedbackFormProps> = ({ 
+  sessionId, patientId, patientName, patientEmail, therapy, dosha, 
+  currentSeverity, allSessions, onSubmit, onCancel 
+}) => {
   const [formData, setFormData] = useState({
     pain: [0],
     digestion: [5],
@@ -30,6 +40,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
     symptoms: [] as string[],
     overall_satisfaction: [4]
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [escalationResult, setEscalationResult] = useState<any>(null);
 
   const symptomTags = [
     'Nausea', 'Dizziness', 'Better Sleep', 'Increased Energy', 
@@ -50,6 +62,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
   };
 
   const handleSubmit = async () => {
+    setIsSubmitting(true);
     const feedback = {
       submitted_at: new Date().toISOString(),
       symptom_scores: {
@@ -61,20 +74,64 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
       notes: formData.notes,
       symptoms: formData.symptoms,
       overall_satisfaction: formData.overall_satisfaction[0],
-      // Detect adverse side effects for escalation
       has_adverse_effects: formData.pain[0] > 7 || formData.digestion[0] < 3 || 
         formData.symptoms.includes('Nausea') || formData.symptoms.includes('Dizziness')
     };
 
     try {
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+      // If adverse effects detected, use escalation endpoint
+      if (feedback.has_adverse_effects) {
+        const escalationResponse = await fetch(`${API_URL}/api/scheduling/feedback-escalation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            patientId: patientId || '',
+            patientName: patientName || 'Patient',
+            patientEmail: patientEmail || '',
+            therapy: therapy || 'Panchakarma',
+            feedback: {
+              symptomScores: feedback.symptom_scores,
+              notes: feedback.notes,
+              sideEffects: formData.symptoms.filter(s => ['Nausea', 'Dizziness'].includes(s)),
+            },
+            currentSeverity: currentSeverity || 5,
+            dosha: dosha || '',
+            allScheduledSessions: (allSessions || []).filter(s => s.status === 'confirmed' || s.status === 'scheduled'),
+            availableSlots: (allSessions || []).map(s => s.datetime),
+          })
+        });
+
+        const escData = await escalationResponse.json();
+        
+        if (escData.success) {
+          setEscalationResult(escData);
+          onSubmit({
+            feedback,
+            llmResponse: {
+              ui_message: escData.llmAnalysis?.explanation || '⚠️ Adverse effects detected. Emergency escalation triggered.',
+              action: 'emergency_escalation',
+              escalation: true,
+              updated_priority_score: escData.escalatedPriority?.totalScore,
+              care_instructions: escData.llmAnalysis?.care_instructions,
+              bumpResult: escData.bumpResult,
+              sessionUpdate: escData.sessionUpdate,
+            }
+          });
+          return;
+        }
+      }
+
+      // Normal feedback (no adverse effects)
       const response = await fetch(`${API_URL}/api/scheduling/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
-          patientName: 'Patient',
-          therapy: 'Panchakarma',
+          patientName: patientName || 'Patient',
+          therapy: therapy || 'Panchakarma',
           feedback: {
             symptomScores: feedback.symptom_scores,
             notes: feedback.notes,
@@ -87,7 +144,6 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
       const data = await response.json();
       
       if (data.success && data.result) {
-        // If LLM recommends escalation, flag for priority boost
         const isEscalation = ['increase_priority', 'add_session'].includes(data.result.action);
         onSubmit({
           feedback,
@@ -101,7 +157,6 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
           }
         });
       } else {
-        // Fallback to local logic if API fails
         const action = feedback.has_adverse_effects ? 'require_more_sessions' :
           feedback.overall_satisfaction >= 4 ? 'no_change_needed' : 'suggest_additional_rest';
         onSubmit({
@@ -119,7 +174,6 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
       }
     } catch (err) {
       console.error('Feedback API error:', err);
-      // Fallback
       onSubmit({
         feedback,
         llmResponse: {
@@ -128,6 +182,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ sessionId, onSubmit, onCanc
           escalation: feedback.has_adverse_effects,
         }
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

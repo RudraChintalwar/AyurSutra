@@ -287,6 +287,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const getGoogleAccessToken = () => googleAccessToken;
 
+  const devTestLogin = async (role: "patient" | "doctor", testIdx: number = 1) => {
+    const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import("firebase/auth");
+    const email = `${role}${testIdx}@testayursutra.com`;
+    const password = "testpassword123";
+    
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (e: any) {
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const profile = {
+          name: `Test ${role === 'doctor' ? 'Doc' : 'Patient'} ${testIdx}`,
+          email,
+          role,
+          age: 30,
+          gender: "Other",
+          ...(role === 'doctor' ? { license: `DOC-TEST-${testIdx}` } : {})
+        };
+        await firestoreWriteWithTimeout(doc(db, "users", cred.user.uid), profile);
+        // Force state update
+        setUser({ uid: cred.user.uid, ...profile } as UserProfile);
+        setRole(role);
+      } else {
+        throw e;
+      }
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -299,7 +327,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         logout,
         updateUserProfile,
         getGoogleAccessToken,
-      }}
+        devTestLogin,
+      } as any}
     >
       {children}
     </AuthContext.Provider>

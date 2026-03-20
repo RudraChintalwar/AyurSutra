@@ -385,11 +385,6 @@ async def authenticate_medicine(request: AuthRequest):
         "guggulu": {"ingredients": ["commiphora wightii", "guggul"], "manufacturer": ["dabur", "baidyanath", "patanjali"]},
     }
 
-        analysis_text = "unable to process image - provide extracted text"
-
-    if not analysis_text:
-        return {"authenticated": False, "confidence": 0, "reason": "No text provided"}
-
     # Check against known formulations
     matched_formulation = None
     ingredient_matches = 0

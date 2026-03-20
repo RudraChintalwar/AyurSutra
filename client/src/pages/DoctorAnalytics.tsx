@@ -19,9 +19,36 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 import { useDoctorData } from '@/hooks/useDoctorData';
+import { useToast } from '@/hooks/use-toast';
 
 const DoctorAnalytics = () => {
   const { patients, sessions, loading } = useDoctorData();
+  const { toast } = useToast();
+
+  const handleExportReport = () => {
+    try {
+      const headers = ['Patient', 'Therapy', 'Date', 'Status', 'Priority', 'Duration'];
+      const rows = sessions.map((s: any) => [
+        s.patient_name || 'Unknown',
+        s.therapy || 'N/A',
+        new Date(s.datetime).toLocaleDateString(),
+        s.status,
+        s.priority || s.totalPriorityScore || 'N/A',
+        s.duration_minutes || 90,
+      ]);
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ayursutra_analytics_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Report Exported \u2705', description: 'CSV file downloaded successfully.' });
+    } catch (err) {
+      toast({ title: 'Export Failed', description: 'Could not generate report.', variant: 'destructive' });
+    }
+  };
 
   // Generate analytics data
   const totalPatients = patients.length;
@@ -75,11 +102,11 @@ const DoctorAnalytics = () => {
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => toast({ title: 'Filters', description: 'Filter options coming soon.' })}>
             <Filter className="w-4 h-4 mr-2" />
             Filters
           </Button>
-          <Button className="ayur-button-accent">
+          <Button className="ayur-button-accent" onClick={handleExportReport}>
             <Download className="w-4 h-4 mr-2" />
             Export Report
           </Button>

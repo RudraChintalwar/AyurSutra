@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,10 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Settings,
   User,
@@ -22,13 +26,17 @@ import {
   MapPin,
   Calendar,
   Palette,
-  Monitor
+  Monitor,
+  Loader2
 } from 'lucide-react';
 
 const DoctorSettings = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState({
-    name: 'Dr. Sargun Mehta',
-    email: 'sargun.mehta@panchakarma.com',
+    name: user?.name || 'Dr. Sargun Mehta',
+    email: user?.email || 'sargun.mehta@panchakarma.com',
     phone: '+91-9000000001',
     specialty: 'Panchakarma Specialist',
     experience: '15 years',
@@ -56,15 +64,53 @@ const DoctorSettings = () => {
     sunday: { enabled: false, start: '09:00', end: '17:00' }
   });
 
-  const handleProfileUpdate = () => {
-    // In a real app, this would update the profile via API
-    console.log('Profile updated:', profileData);
+  // Load saved settings from Firestore
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!user?.uid) return;
+      try {
+        const docRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.settings) {
+            if (data.settings.profile) setProfileData(prev => ({ ...prev, ...data.settings.profile }));
+            if (data.settings.notifications) setNotifications(prev => ({ ...prev, ...data.settings.notifications }));
+            if (data.settings.availability) setAvailability(prev => ({ ...prev, ...data.settings.availability }));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading settings:', err);
+      }
+    };
+    loadSettings();
+  }, [user]);
+
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    try {
+      if (user?.uid) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          name: profileData.name,
+          phone: profileData.phone,
+          settings: {
+            profile: profileData,
+            notifications,
+            availability,
+          }
+        });
+      }
+      toast({ title: 'Settings Saved ✅', description: 'Your preferences have been updated.' });
+    } catch (err) {
+      console.error('Save error:', err);
+      toast({ title: 'Save Failed', description: 'Could not save settings.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleNotificationUpdate = () => {
-    // In a real app, this would update notification preferences via API
-    console.log('Notifications updated:', notifications);
-  };
+  const handleProfileUpdate = () => handleSaveAll();
+  const handleNotificationUpdate = () => handleSaveAll();
 
   return (
     <div className="p-6 space-y-6">
@@ -78,8 +124,8 @@ const DoctorSettings = () => {
             Customize your practice profile and system preferences
           </p>
         </div>
-        <Button className="ayur-button-accent">
-          <Save className="w-4 h-4 mr-2" />
+        <Button className="ayur-button-accent" onClick={handleSaveAll} disabled={isSaving}>
+          {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
           Save All Changes
         </Button>
       </div>

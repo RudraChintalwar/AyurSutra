@@ -45,8 +45,8 @@ const GoogleIcon = () => (
 const Login = () => {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const navigate = useNavigate();
-  const { user, signInWithGoogle, registerWithGoogle, updateUserProfile } =
-    useAuth();
+  const { user, signInWithGoogle, registerWithGoogle, updateUserProfile, devTestLogin } =
+    useAuth() as any;
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -282,6 +282,15 @@ const Login = () => {
                 <p className="text-xs text-muted-foreground">
                   Your Google Calendar will be synced for therapy scheduling
                 </p>
+              </div>
+
+              {/* TEST BYPASS FOR AUTOMATED E2E AGENTS */}
+              <div className="pt-4 border-t border-muted/50 mt-4 space-y-2">
+                <p className="text-xs text-center text-muted-foreground">Automated Testing Bypass</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => devTestLogin('patient', 1)}>Test Patient</Button>
+                  <Button variant="outline" size="sm" onClick={() => devTestLogin('doctor', 1)}>Test Doctor</Button>
+                </div>
               </div>
             </div>
           )}

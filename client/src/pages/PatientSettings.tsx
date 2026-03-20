@@ -23,7 +23,8 @@ import {
   Palette,
   Monitor,
   Download,
-  FileText
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
@@ -35,6 +36,7 @@ const PatientSettings = () => {
   const { toast } = useToast();
   const currentPatient = user as any;
   const [sessionCount, setSessionCount] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchSessionCount = async () => {
@@ -90,8 +92,32 @@ const PatientSettings = () => {
     }
   };
 
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    try {
+      if (user?.uid) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          name: profileData.name,
+          phone: profileData.phone,
+          gender: profileData.gender,
+          settings: {
+            profile: profileData,
+            notifications,
+            preferences,
+          }
+        });
+      }
+      toast({ title: 'Settings Saved \u2705', description: 'All your preferences have been updated.' });
+    } catch (err) {
+      console.error('Save error:', err);
+      toast({ title: 'Save Failed', description: 'Could not save settings.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleNotificationUpdate = () => {
-    console.log('Notifications updated:', notifications);
+    handleSaveAll();
   };
 
   const formatDate = (dateString: string) => {
@@ -110,8 +136,8 @@ const PatientSettings = () => {
             Manage your personal information and preferences
           </p>
         </div>
-        <Button className="ayur-button-accent">
-          <Save className="w-4 h-4 mr-2" />
+        <Button className="ayur-button-accent" onClick={handleSaveAll} disabled={isSaving}>
+          {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
           Save All Changes
         </Button>
       </div>
@@ -418,17 +444,42 @@ const PatientSettings = () => {
                 <Separator />
 
                 <div className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button variant="outline" className="w-full justify-start" onClick={() => {
+                    try {
+                      const myData = {
+                        profile: profileData,
+                        dosha: currentPatient?.dosha,
+                        symptoms: currentPatient?.symptoms,
+                        recommendation: currentPatient?.llm_recommendation,
+                        sessions: sessionCount,
+                        exported_at: new Date().toISOString(),
+                      };
+                      const blob = new Blob([JSON.stringify(myData, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `ayursutra_data_${new Date().toISOString().split('T')[0]}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast({ title: 'Data Downloaded \u2705', description: 'Your data has been exported.' });
+                    } catch (err) {
+                      toast({ title: 'Download Failed', variant: 'destructive' });
+                    }
+                  }}>
                     <Download className="w-4 h-4 mr-2" />
                     Download My Data
                   </Button>
 
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button variant="outline" className="w-full justify-start" onClick={() => {
+                    toast({ title: 'Privacy Policy', description: 'Opening privacy policy page...' });
+                  }}>
                     <FileText className="w-4 h-4 mr-2" />
                     Privacy Policy
                   </Button>
 
-                  <Button variant="outline" className="w-full justify-start text-red-600 hover:text-red-700">
+                  <Button variant="outline" className="w-full justify-start text-red-600 hover:text-red-700" onClick={() => {
+                    toast({ title: '\u26a0\ufe0f Account Deletion', description: 'Please contact support to delete your account.', variant: 'destructive' });
+                  }}>
                     Delete Account
                   </Button>
                 </div>
