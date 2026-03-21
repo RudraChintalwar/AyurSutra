@@ -1,0 +1,34 @@
+{
+  "passCount": 7,
+  "failCount": 0,
+  "results": [
+    {
+      "message": "Baseline calculation (50S * 0.5) is 25.0 (Got 25)",
+      "condition": true
+    },
+    {
+      "message": "High severity + Dosha is 49.2 (Got 49.2)",
+      "condition": true
+    },
+    {
+      "message": "Emergency Escalation is 82.5 (Got 82.5)",
+      "condition": true
+    },
+    {
+      "message": "Tie breaker correctly favors higher Total Score",
+      "condition": true
+    },
+    {
+      "message": "Tie breaker correctly favors higher Base ML Severity when Total is tied",
+      "condition": true
+    },
+    {
+      "message": "Tie breaker correctly favors cumulative Wait Time when Severity is tied",
+      "condition": true
+    },
+    {
+      "message": "Tie breaker correctly favors older FIFO timestamps",
+      "condition": true
+    }
+  ]
+}
