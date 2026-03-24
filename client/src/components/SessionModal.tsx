@@ -14,8 +14,9 @@ import {
   Activity
 } from 'lucide-react';
 import FeedbackForm from './FeedbackForm';
+import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 interface SessionModalProps {
@@ -28,7 +29,11 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
   const [showFeedback, setShowFeedback] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [relatedSessions, setRelatedSessions] = useState<any[]>([]);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isDoctor = user?.role === 'doctor';
 
   useEffect(() => {
     const fetchRelated = async () => {
@@ -113,6 +118,60 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
       onClose();
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to request reschedule.', variant: 'destructive' });
+    }
+  };
+
+  // Complete session handler (for doctors)
+  const handleCompleteSessionFromModal = async () => {
+    if (!session?.id) return;
+    setIsCompleting(true);
+    try {
+      await updateDoc(doc(db, 'sessions', session.id), {
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        doctor_notes: completionNotes.trim() || '',
+        completed_by: user?.uid || '',
+      });
+      toast({ title: 'Session Completed ✅', description: `${session.therapy} session marked as completed.` });
+      setCompletionNotes('');
+      onClose();
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to complete session.', variant: 'destructive' });
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  // Cancel session handler
+  const handleCancelSession = async () => {
+    if (!session?.id) return;
+    try {
+      await updateDoc(doc(db, 'sessions', session.id), {
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: user?.uid || '',
+        cancel_reason: isDoctor ? 'Cancelled by doctor' : 'Cancelled by patient',
+      });
+      toast({ title: 'Session Cancelled', description: 'The session has been cancelled.' });
+      onClose();
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to cancel session.', variant: 'destructive' });
+    }
+  };
+
+  // Delete session handler (permanent removal)
+  const handleDeleteSession = async () => {
+    if (!session?.id) return;
+    try {
+      if (confirm('Are you sure you want to permanently delete this session from the database? This action cannot be undone.')) {
+        await deleteDoc(doc(db, 'sessions', session.id));
+        toast({ title: 'Session Deleted', description: 'The session was permanently removed.' });
+        onClose();
+        // Force refresh by reloading the page so it disappears
+        window.location.reload();
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to delete session.', variant: 'destructive' });
     }
   };
 
@@ -284,13 +343,42 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                   <FileText className="w-4 h-4 text-primary" />
                   <h4 className="font-semibold">Practitioner Notes</h4>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {session.status === 'completed' 
-                    ? "Session completed successfully. Patient responded well to treatment. Continue with planned protocol."
-                    : "No notes available for upcoming session."
-                  }
-                </p>
+                {session.doctor_notes ? (
+                  <p className="text-sm text-foreground">{session.doctor_notes}</p>
+                ) : session.status === 'completed' ? (
+                  <p className="text-sm text-muted-foreground italic">No notes were added for this session.</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Notes will be available after the session is completed.</p>
+                )}
+                {session.completed_at && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Completed: {new Date(session.completed_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                  </p>
+                )}
               </div>
+
+              {/* Doctor inline completion form */}
+              {isDoctor && (session.status === 'confirmed' || session.status === 'scheduled') && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Complete This Session
+                  </h4>
+                  <textarea
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                    placeholder="Enter clinical notes (observations, patient response, treatment adjustments)..."
+                    className="w-full p-3 border rounded-md text-sm min-h-[100px] mb-3 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <button
+                    onClick={handleCompleteSessionFromModal}
+                    disabled={isCompleting}
+                    className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {isCompleting ? 'Completing...' : '✅ Mark as Completed'}
+                  </button>
+                </div>
+              )}
               
               {patient && (
                 <div className="p-4 bg-muted/30 rounded-lg">
@@ -299,10 +387,10 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
                     <h4 className="font-semibold">Patient Background</h4>
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
-                    <strong>Reason for visit:</strong> {patient.reason_for_visit}
+                    <strong>Reason for visit:</strong> {patient.reason_for_visit || session.clinical_summary || 'Not specified'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    <strong>Current symptoms:</strong> {patient.symptoms.map((s: any) => s.name).join(', ')}
+                    <strong>Current symptoms:</strong> {patient.symptoms?.length > 0 ? patient.symptoms.map((s: any) => s.name || s).join(', ') : 'None recorded'}
                   </p>
                 </div>
               )}
@@ -392,11 +480,39 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               Close
             </Button>
             <div className="flex items-center space-x-3">
-              {(session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'bumped') && (
+              {/* Cancel button for any active session */}
+              {['pending_review', 'scheduled', 'confirmed', 'bumped'].includes(session.status) && (
+                <>
+                  <Button variant="outline" className="text-red-800 hover:bg-red-100 border-red-300 font-bold" onClick={handleDeleteSession}>
+                    Delete
+                  </Button>
+                  <Button variant="outline" className="text-red-600 hover:bg-red-50 border-red-200" onClick={handleCancelSession}>
+                    Cancel Session
+                  </Button>
+                </>
+              )}
+              {/* Reschedule for patient */}
+              {!isDoctor && (session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'bumped') && (
                 <Button variant="outline" onClick={handleRescheduleRequest}>
                   Request Reschedule
                 </Button>
               )}
+              {/* Complete for doctor */}
+              {isDoctor && (session.status === 'confirmed' || session.status === 'scheduled') && (
+                <Button 
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    setCompletionNotes('');
+                    // Switch to notes tab to show the completion form
+                    const notesTab = document.querySelector('[value="notes"]') as HTMLElement;
+                    notesTab?.click();
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Complete Session
+                </Button>
+              )}
+              {/* Feedback for completed sessions */}
               {session.status === 'completed' && !session.feedback && (
                 <Button onClick={() => setShowFeedback(true)} className="ayur-button-accent">
                   <Star className="w-4 h-4 mr-2" />

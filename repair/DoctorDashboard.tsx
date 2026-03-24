@@ -17,7 +17,7 @@ import SchedulingWizard from '@/components/SchedulingWizard';
 import MessageModal from '@/components/MessageModal';
 import PatientDetailsModal from '@/components/PatientDetailsModal';
 import FeedbackForm from '@/components/FeedbackForm';
-import {
+import { 
   Calendar,
   Clock,
   User,
@@ -365,7 +365,7 @@ const DoctorDashboard = () => {
             <Bell className="w-4 h-4 mr-1" />
             Messages
           </Button>
-          <Button
+          <Button 
             onClick={() => setShowSchedulingWizard(true)}
             className="ayur-button-accent"
           >
@@ -456,10 +456,11 @@ const DoctorDashboard = () => {
               {priorityQueue.slice(0, 10).map((item, index) => (
                 <div
                   key={item.id}
-                  className={`p-3 rounded-lg cursor-pointer transition-all animate-slide-up hover:scale-[1.02] ${selectedPatient?.id === item.patient_id
-                    ? 'bg-primary/10 border border-primary/20'
-                    : 'bg-muted/30 hover:bg-muted/50'
-                    }`}
+                  className={`p-3 rounded-lg cursor-pointer transition-all animate-slide-up hover:scale-[1.02] ${
+                    selectedPatient?.id === item.patient_id 
+                      ? 'bg-primary/10 border border-primary/20' 
+                      : 'bg-muted/30 hover:bg-muted/50'
+                  }`}
                   style={{ animationDelay: `${index * 0.05}s` }}
                   onClick={() => item.patient && setSelectedPatient(item.patient)}
                 >
@@ -511,20 +512,20 @@ const DoctorDashboard = () => {
                         size="sm"
                         variant="outline"
                         className="text-xs h-7 px-2 text-amber-600 hover:bg-amber-50 flex-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setModifySessionId(item.id);
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setModifySessionId(item.id); 
                           setModifyTherapy(item.therapy || '');
-
+                          
                           // Format existing datetime for the datetime-local input
                           if (item.datetime) {
                             const d = new Date(item.datetime);
                             const pad = (n: number) => n.toString().padStart(2, '0');
-                            const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                            const formatted = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
                             setModifyDatetime(formatted);
                           }
-
-                          setShowModifyPanel(true);
+                          
+                          setShowModifyPanel(true); 
                         }}
                       >
                         <Edit className="w-3 h-3 mr-1" /> Modify
@@ -683,9 +684,9 @@ const DoctorDashboard = () => {
                       {selectedPatient.llm_recommendation?.priority_score || 'N/A'}
                     </Badge>
                   </div>
-                  <Progress
-                    value={selectedPatient.llm_recommendation?.priority_score || 0}
-                    className="h-2"
+                  <Progress 
+                    value={selectedPatient.llm_recommendation?.priority_score || 0} 
+                    className="h-2" 
                   />
                 </div>
 
@@ -717,7 +718,7 @@ const DoctorDashboard = () => {
                           <span className="flex-1">{symptom.name}</span>
                           <div className="flex items-center space-x-2 ml-2">
                             <div className="w-20 bg-muted rounded-full h-2">
-                              <div
+                              <div 
                                 className={`h-2 rounded-full ${symptom.score >= 7 ? 'bg-red-500' : symptom.score >= 4 ? 'bg-amber-500' : 'bg-green-500'}`}
                                 style={{ width: `${symptom.score * 10}%` }}
                               />
@@ -744,7 +745,7 @@ const DoctorDashboard = () => {
                         {selectedPatient.llm_recommendation.therapy}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        {selectedPatient.llm_recommendation.sessions_recommended} sessions •
+                        {selectedPatient.llm_recommendation.sessions_recommended} sessions • 
                         Every {selectedPatient.llm_recommendation.spacing_days} days •
                         Confidence: {selectedPatient.llm_recommendation.confidence || 'N/A'}%
                       </div>
@@ -797,23 +798,23 @@ const DoctorDashboard = () => {
             <div className="space-y-4">
               <div>
                 <Label>Therapy Type</Label>
-                <Input
-                  value={modifyTherapy}
+                <Input 
+                  value={modifyTherapy} 
                   onChange={(e) => setModifyTherapy(e.target.value)}
                   placeholder="e.g., Virechana, Basti, Abhyanga"
                 />
               </div>
               <div>
                 <Label>New Date & Time (Optional)</Label>
-                <Input
+                <Input 
                   type="datetime-local"
                   value={modifyDatetime}
                   onChange={(e) => setModifyDatetime(e.target.value)}
                 />
               </div>
               <div className="flex items-center space-x-2">
-                <Button
-                  className="flex-1"
+                <Button 
+                  className="flex-1" 
                   onClick={() => handleApproval(modifySessionId, 'modified')}
                   disabled={actionLoading === modifySessionId}
                 >

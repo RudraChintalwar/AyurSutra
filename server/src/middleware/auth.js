@@ -11,8 +11,10 @@ if (!admin.apps.length) {
             }),
         });
     } else {
-        // Fallback for default credentials (e.g. deployed to GCP)
-        admin.initializeApp();
+        // Fallback for default credentials (e.g. deployed to GCP or CLI auth)
+        admin.initializeApp({
+            projectId: process.env.FIREBASE_PROJECT_ID || 'ayursutra-3311d'
+        });
     }
 }
 

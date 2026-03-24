@@ -44,6 +44,17 @@ export interface UserProfile {
   // Doctor-specific
   license?: string;
   specialization?: string;
+  clinicAddress?: string;
+  therapiesOffered?: string[];
+  supportedTherapies?: string[];
+  expertiseSymptoms?: string[];
+  rating?: number;
+  yearsOfExperience?: number;
+  
+  // Location Data
+  location?: string;
+  geolocation?: { lat: number; lng: number };
+
   // Google Calendar
   googleAccessToken?: string;
 }
@@ -53,11 +64,11 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   role: UserRole;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<{ isNewUser: boolean }>;
   registerWithGoogle: (
     role: UserRole,
     profileData: Partial<UserProfile>
-  ) => Promise<void>;
+  ) => Promise<{ alreadyExists: boolean }>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   getGoogleAccessToken: () => string | null;
@@ -81,16 +92,22 @@ const firestoreWriteWithTimeout = async (
   timeoutMs = 5000
 ): Promise<boolean> => {
   try {
+    // Strip undefined values to prevent Firestore validation errors
+    const cleanedData = Object.entries(data).reduce((acc, [key, value]) => {
+      if (value !== undefined) acc[key] = value;
+      return acc;
+    }, {} as Record<string, unknown>);
+
     await Promise.race([
-      options ? setDoc(ref, data, options) : setDoc(ref, data),
+      options ? setDoc(ref, cleanedData, options) : setDoc(ref, cleanedData),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Firestore timeout")), timeoutMs)
       ),
     ]);
     return true;
   } catch (err) {
-    console.warn("Firestore write failed (will continue):", err);
-    return false;
+    console.error("Firestore write failed:", err);
+    throw err; // Actually throw to fail signup!
   }
 };
 
@@ -145,6 +162,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           license: data.license,
           specialization: data.specialization,
           googleAccessToken: data.googleAccessToken,
+          location: data.location,
+          geolocation: data.geolocation,
+          clinicAddress: data.clinicAddress,
+          therapiesOffered: data.therapiesOffered,
+          supportedTherapies: data.supportedTherapies,
+          expertiseSymptoms: data.expertiseSymptoms,
+          rating: data.rating,
+          yearsOfExperience: data.yearsOfExperience,
         };
       }
       return null;
@@ -189,27 +214,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // ─── Auth Methods ────────────────────────────────────
 
   /** Sign in with Google (returning users) */
-  const signInWithGoogleFn = async () => {
+  const signInWithGoogleFn = async (): Promise<{ isNewUser: boolean }> => {
     const result = await signInWithPopup(auth, googleProvider);
-    // Extract Google OAuth access token
     const credential = GoogleAuthProvider.credentialFromResult(result);
     const token = credential?.accessToken || null;
+
+    // Check if user has a Firestore profile with a role
+    // Important: Do this BEFORE writing the token to avoid creating an empty skeleton document!
+    const profile = await fetchUserProfile(result.user);
+    
+    if (!profile || !profile.role) {
+      // New user: Do not write the token yet (signup will do it).
+      // Sign them out of the returning flow so they go through the proper signup flow.
+      await firebaseSignOut(auth);
+      setUser(null);
+      setRole(null);
+      setFirebaseUser(null);
+      setGoogleAccessToken(null);
+      return { isNewUser: true };
+    }
+
+    // User exists. Now we can safely persist their new access token.
     if (token) {
       setGoogleAccessToken(token);
-      // Persist token to Firestore for calendar API usage
       await firestoreWriteWithTimeout(
         doc(db, "users", result.user.uid),
         { googleAccessToken: token },
         { merge: true }
       );
     }
+
+    return { isNewUser: false };
   };
 
   /** Register with Google (new users — collects profile data first, then triggers popup) */
   const registerWithGoogle = async (
     selectedRole: UserRole,
     profileData: Partial<UserProfile>
-  ) => {
+  ): Promise<{ alreadyExists: boolean }> => {
     const result = await signInWithPopup(auth, googleProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     const token = credential?.accessToken || null;
@@ -219,6 +261,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const fbUser = result.user;
+
+    // Check if user already has a complete profile in Firestore
+    const existingProfile = await fetchUserProfile(fbUser);
+    if (existingProfile && existingProfile.role) {
+      // User already has an account — set state and return flag
+      setUser(existingProfile);
+      setRole(existingProfile.role);
+      setFirebaseUser(fbUser);
+      return { alreadyExists: true };
+    }
 
     // Write full profile to Firestore
     const profileToSave: Record<string, unknown> = {
@@ -230,6 +282,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       age: profileData.age || undefined,
       gender: profileData.gender || undefined,
       googleAccessToken: token || undefined,
+      location: profileData.location || undefined,
+      geolocation: profileData.geolocation || undefined,
       createdAt: serverTimestamp(),
     };
 
@@ -237,6 +291,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (selectedRole === "doctor") {
       profileToSave.license = profileData.license || "";
       profileToSave.specialization = profileData.specialization || "";
+      profileToSave.clinicAddress = profileData.clinicAddress || undefined;
     }
 
     await firestoreWriteWithTimeout(
@@ -257,10 +312,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       license: profileData.license,
       specialization: profileData.specialization,
       googleAccessToken: token || undefined,
+      location: profileData.location,
+      geolocation: profileData.geolocation,
+      clinicAddress: profileData.clinicAddress,
     };
     setUser(newProfile);
     setRole(selectedRole);
     setFirebaseUser(fbUser);
+    return { alreadyExists: false };
   };
 
   const logout = async () => {

@@ -12,6 +12,7 @@ import SessionModal from '@/components/SessionModal';
 import MessageModal from '@/components/MessageModal';
 import SessionSchedulingModal from '@/components/SessionSchedulingModal';
 import SessionDetailsModal from '@/components/SessionDetailsModal';
+import SchedulingWizard from '@/components/SchedulingWizard';
 import { 
   Calendar,
   Clock,
@@ -32,6 +33,7 @@ const PatientDashboard = () => {
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showSchedulingWizard, setShowSchedulingWizard] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -56,6 +58,20 @@ const PatientDashboard = () => {
     };
     fetchSessions();
   }, [user]);
+
+  // Refetch sessions (called after wizard completes)
+  const refreshSessions = async () => {
+    if (!user?.uid) return;
+    try {
+      const q = query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
+      const querySnapshot = await getDocs(q);
+      const sessionsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      sessionsData.sort((a: any, b: any) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
+      setPatientSessions(sessionsData);
+    } catch (error) {
+      console.error("Error refreshing sessions:", error);
+    }
+  };
 
   // Fetch Google Calendar events
   useEffect(() => {
@@ -124,8 +140,11 @@ const PatientDashboard = () => {
     });
   };
 
-  const upcomingSessions = patientSessions.filter(s => s.status === 'scheduled');
+  const upcomingSessions = patientSessions.filter(s =>
+    ['scheduled', 'confirmed', 'pending_review', 'bumped', 'reschedule_requested'].includes(s.status)
+  );
   const completedSessions = patientSessions.filter(s => s.status === 'completed');
+  const cancelledSessions = patientSessions.filter(s => s.status === 'cancelled' || s.status === 'rejected');
 
   return (
     <div className="p-6 space-y-6">
@@ -184,6 +203,30 @@ const PatientDashboard = () => {
 
       {!currentPatient?.quizCompleted && <DoshaQuiz />}
 
+      {/* ─── Book New Session CTA ───────────── */}
+      <Card 
+        className="ayur-card p-6 animate-slide-up cursor-pointer group hover:shadow-lg transition-all border-primary/20 hover:border-primary/40 bg-gradient-to-r from-primary/5 via-white to-accent/5"
+        onClick={() => setShowSchedulingWizard(true)}
+        style={{ animationDelay: '0.05s' }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+              <Calendar className="w-8 h-8 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-playfair text-xl font-semibold text-primary">Book New Panchakarma Session</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Complete health assessment → AI recommendation → Schedule therapy sessions
+              </p>
+            </div>
+          </div>
+          <div className="p-2 rounded-full bg-primary/10 group-hover:bg-primary group-hover:text-white transition-all">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
+      </Card>
+
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upcoming Sessions */}
@@ -211,17 +254,19 @@ const PatientDashboard = () => {
                     </div>
                   </div>
                   <div className="text-right flex flex-col items-end gap-1">
-                    <Badge variant="outline" className="text-xs">
-                      Scheduled
+                    <Badge className={`text-xs ${
+                      session.status === 'confirmed' ? 'bg-green-100 text-green-700 border-green-200' :
+                      session.status === 'pending_review' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                      session.status === 'bumped' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                      session.status === 'reschedule_requested' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                      'bg-blue-100 text-blue-700 border-blue-200'
+                    }`}>
+                      {session.status === 'confirmed' ? '✅ Confirmed' :
+                       session.status === 'pending_review' ? '🟡 Pending Review' :
+                       session.status === 'bumped' ? '⚡ Rescheduled' :
+                       session.status === 'reschedule_requested' ? '⚠️ Reschedule Req' :
+                       '📅 Scheduled'}
                     </Badge>
-                    {session.doctor_approval && (
-                      <Badge 
-                        variant={session.doctor_approval === 'approved' ? 'default' : session.doctor_approval === 'rejected' ? 'destructive' : 'secondary'} 
-                        className="text-[10px]"
-                      >
-                        {session.doctor_approval === 'approved' ? '✅ Doctor Approved' : session.doctor_approval === 'rejected' ? '❌ Needs Revision' : '✏️ Doctor Modified'}
-                      </Badge>
-                    )}
                     <div className="text-xs text-muted-foreground mt-1">
                       Click to view details
                     </div>
@@ -324,7 +369,9 @@ const PatientDashboard = () => {
             <div className="mt-4 p-3 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg">
               <div className="text-sm font-medium text-primary mb-1">Overall Progress</div>
               <div className="text-xs text-muted-foreground">
-                Your symptoms have improved significantly since starting treatment.
+                {completedSessions.length > 0
+                  ? `${completedSessions.length} session${completedSessions.length > 1 ? 's' : ''} completed. ${upcomingSessions.length > 0 ? `${upcomingSessions.length} upcoming.` : 'Schedule your next session to continue your treatment plan.'}`
+                  : 'Complete your first session to start tracking progress.'}
               </div>
             </div>
           </div>
@@ -501,6 +548,16 @@ const PatientDashboard = () => {
           name: 'Dr. Sargun Mehta',
           avatar: '/placeholder.svg',
           role: 'doctor'
+        }}
+      />
+
+      {/* Scheduling Wizard */}
+      <SchedulingWizard
+        isOpen={showSchedulingWizard}
+        onClose={() => setShowSchedulingWizard(false)}
+        onComplete={(data) => {
+          setShowSchedulingWizard(false);
+          refreshSessions();
         }}
       />
     </div>

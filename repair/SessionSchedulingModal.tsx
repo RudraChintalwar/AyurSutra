@@ -26,8 +26,6 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
   const [priority, setPriority] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [doctors, setDoctors] = useState<any[]>([]);
-  const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -41,33 +39,11 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
   ];
 
-  React.useEffect(() => {
-    if (isOpen) {
-      const fetchDocs = async () => {
-        try {
-          const q = query(collection(db, 'users'), where('role', '==', 'doctor'));
-          const snap = await getDocs(q);
-          setDoctors(snap.docs.map(d => ({id: d.id, ...d.data()})));
-        } catch (e) {
-          console.error("Failed to fetch doctors:", e);
-        }
-      };
-      fetchDocs();
-    } else {
-      setSelectedDoctorId('');
-      setSelectedDate(undefined);
-      setSelectedTime('');
-      setTherapy('');
-      setPriority('');
-      setNotes('');
-    }
-  }, [isOpen]);
-
   const handleSchedule = async () => {
-    if (!selectedDate || !selectedTime || !therapy || !selectedDoctorId) {
+    if (!selectedDate || !selectedTime || !therapy) {
       toast({
         title: "Please fill all required fields",
-        description: "Date, time, therapy type, and doctor are required.",
+        description: "Date, time, and therapy type are required.",
         variant: "destructive"
       });
       return;
@@ -86,9 +62,20 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
       const sessionDatetimeISO = sessionDatetime.toISOString();
 
       // ─── FIX #4: Conflict detection using a ±30-minute window ─────────────
+      // Old code did an exact ISO string match which NEVER fires.
       // New code loads all scheduled sessions for the assigned doctor and
-      // checks whether any existing session is within 30 minutes of the requested time.
-      const assignedDoctorId = selectedDoctorId;
+      // checks whether any existing session is within 30 minutes of the
+      // requested time.
+      let assignedDoctorId = '';
+      try {
+        const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
+        const doctorsSnap = await getDocs(doctorsQuery);
+        if (!doctorsSnap.empty) {
+          assignedDoctorId = doctorsSnap.docs[0].id;
+        }
+      } catch (e) {
+        console.error('Error fetching doctors:', e);
+      }
 
       if (assignedDoctorId) {
         const existingQ = query(
@@ -205,22 +192,6 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
                   className="rounded-md"
                 />
               </div>
-            </div>
-
-            <div>
-              <Label className="text-base font-medium">Select Doctor *</Label>
-              <Select value={selectedDoctorId} onValueChange={setSelectedDoctorId}>
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Choose a doctor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {doctors.map((doc) => (
-                    <SelectItem key={doc.id} value={doc.id}>
-                      Dr. {doc.name || doc.clinicName || "Unknown"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <div>

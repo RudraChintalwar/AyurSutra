@@ -6,6 +6,8 @@ import schedulingRoutes from "./routes/scheduling.js";
 import chatbotRoutes from "./routes/chatbot.js";
 import notificationRoutes from "./routes/notifications.js";
 import calendarRoutes from "./routes/calendar.js";
+import doctorsRoutes from "./routes/doctors.js";
+import { startNightlyScoringJob } from "./jobs/nightlyScoring.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +33,7 @@ app.use("/api/scheduling", schedulingRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/doctors", doctorsRoutes);
 
 // ─── Error Handler ───────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -44,4 +47,11 @@ app.use((err, req, res, next) => {
 // ─── Start ───────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`🌿 AyurSutra API Server running on http://localhost:${PORT}`);
+    // Start nightly CRON for priority score recalculation
+    try {
+        startNightlyScoringJob();
+        console.log('📊 Nightly scoring CRON job started (midnight IST)');
+    } catch (err) {
+        console.warn('⚠️ Failed to start nightly scoring CRON:', err.message);
+    }
 });

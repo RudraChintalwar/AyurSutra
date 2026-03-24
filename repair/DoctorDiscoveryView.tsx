@@ -95,9 +95,9 @@ const DoctorDiscoveryView = () => {
     try {
       let queryConstraints: any[] = [where('role', '==', 'doctor')];
 
-      // NOTE: We do NOT filter by supportedTherapies in Firestore query
-      // because this field is not populated during doctor signup via Login.tsx.
-      // Therapy matching is handled client-side at lines 149-182.
+      if (filters.requiredTherapy) {
+          queryConstraints.push(where('supportedTherapies', 'array-contains', filters.requiredTherapy));
+      }
       if (filters.gender && filters.gender !== 'Any') {
           queryConstraints.push(where('gender', '==', filters.gender));
       }

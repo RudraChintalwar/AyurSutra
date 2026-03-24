@@ -12,6 +12,7 @@ import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import DoctorDashboard from "@/pages/DoctorDashboard";
 import PatientDashboard from "@/pages/PatientDashboard";
+import DoctorDiscoveryView from "@/pages/DoctorDiscoveryView";
 import DoctorPatients from "@/pages/DoctorPatients";
 import DoctorCalendar from "@/pages/DoctorCalendar";
 import DoctorAnalytics from "@/pages/DoctorAnalytics";
@@ -175,6 +176,16 @@ const AppRoutes = () => {
           <ProtectedRoute allowedRoles={["patient"]}>
             <DashboardLayout>
               <PatientSessions />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/patient/discovery"
+        element={
+          <ProtectedRoute allowedRoles={["patient"]}>
+            <DashboardLayout>
+              <DoctorDiscoveryView />
             </DashboardLayout>
           </ProtectedRoute>
         }

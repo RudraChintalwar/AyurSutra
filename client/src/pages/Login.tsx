@@ -14,8 +14,13 @@ import {
   Shield,
   CheckCircle2,
   Calendar,
+  MapPin
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
+
+// Keep libraries as a static constant to prevent re-renders
+const GOOGLE_MAPS_LIBRARIES: ("places")[] = ["places"];
 
 // ═══════════════════════════════════════════════════════
 //  CONSTANTS
@@ -65,6 +70,35 @@ const Login = () => {
   // Doctor-specific
   const [license, setLicense] = useState("");
   const [specialization, setSpecialization] = useState("");
+  
+  // Location
+  const [locationAddress, setLocationAddress] = useState("");
+  const [geolocation, setGeolocation] = useState<{lat: number, lng: number} | null>(null);
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string,
+    libraries: GOOGLE_MAPS_LIBRARIES
+  });
+
+  const onLoadAutocomplete = (autocompleteObj: google.maps.places.Autocomplete) => {
+    setAutocomplete(autocompleteObj);
+  };
+
+  const onPlaceChanged = () => {
+    if (autocomplete !== null) {
+      const place = autocomplete.getPlace();
+      const addressName = place.formatted_address || place.name || "";
+      setLocationAddress(addressName);
+      if (place.geometry?.location) {
+        setGeolocation({
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng()
+        });
+      }
+    }
+  };
 
   // ─── Redirect if already logged in ────────────────
   useEffect(() => {
@@ -82,7 +116,17 @@ const Login = () => {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      if (result.isNewUser) {
+        // No account found — redirect to signup
+        setMode("signup");
+        setSignupStep("role");
+        toast({
+          title: "No account found",
+          description: "It looks like you don't have an account yet. Please sign up first.",
+        });
+        return;
+      }
       toast({ title: "Welcome back! 🌿", description: "Signed in with Google." });
       setTimeout(() => navigate("/dashboard", { replace: true }), 500);
     } catch (error: any) {
@@ -148,15 +192,34 @@ const Login = () => {
       return;
     }
 
+    if (!locationAddress.trim()) {
+      toast({ title: "Location required", description: "Please provide your location.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     try {
-      await registerWithGoogle(selectedRole, {
+      const result = await registerWithGoogle(selectedRole, {
         name,
         age: age ? parseInt(age) : undefined,
         gender: gender || undefined,
         phone: phone || undefined,
-        ...(selectedRole === "doctor" ? { license, specialization } : {}),
+        location: locationAddress || undefined,
+        geolocation: geolocation || undefined,
+        ...(selectedRole === "doctor" ? { clinicAddress: locationAddress, license, specialization } : {}),
       });
+
+      if (result.alreadyExists) {
+        // Account already exists — redirect to login
+        setMode("login");
+        toast({
+          title: "Account already exists! 🌿",
+          description: "You already have an account. We've signed you in.",
+        });
+        // The user is already signed in from registerWithGoogle
+        setTimeout(() => navigate("/dashboard", { replace: true }), 500);
+        return;
+      }
 
       toast({
         title: "Account created! 🌿",
@@ -508,6 +571,35 @@ const Login = () => {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-location">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-4 h-4 text-primary" />
+                        {selectedRole === "doctor" ? "Clinic Address" : "Locality / City"} <span className="text-destructive">*</span>
+                      </div>
+                    </Label>
+                    {isLoaded ? (
+                      <Autocomplete onLoad={onLoadAutocomplete} onPlaceChanged={onPlaceChanged}>
+                        <Input
+                          id="signup-location"
+                          type="text"
+                          placeholder="Search for your location..."
+                          value={locationAddress}
+                          onChange={(e) => setLocationAddress(e.target.value)}
+                          required
+                        />
+                      </Autocomplete>
+                    ) : (
+                      <Input
+                        id="signup-location"
+                        type="text"
+                        placeholder="Loading maps..."
+                        disabled
+                        required
+                      />
+                    )}
                   </div>
 
                   {/* Doctor-specific fields */}
