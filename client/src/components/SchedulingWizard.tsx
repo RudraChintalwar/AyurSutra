@@ -26,14 +26,14 @@ interface SchedulingWizardProps {
 }
 
 // ─── FIX #6: Generate relative slots from tomorrow, never hardcoded past dates ──
-const generateDefaultSlots = (): string[] => {
+const generateDefaultSlots = (count = 5, spacingDays = 3): string[] => {
   const slots: string[] = [];
   const base = new Date();
   base.setDate(base.getDate() + 1); // start tomorrow
   base.setSeconds(0, 0);
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < count; i++) {
     const d = new Date(base);
-    d.setDate(base.getDate() + i * 3);
+    d.setDate(base.getDate() + i * Math.max(1, spacingDays));
     d.setHours(i % 2 === 0 ? 9 : 14, 0, 0, 0);
     // Skip Saturday → push to Monday
     if (d.getDay() === 6) d.setDate(d.getDate() + 2);
@@ -44,12 +44,58 @@ const generateDefaultSlots = (): string[] => {
   return slots;
 };
 
+const buildHeuristicRecommendation = (
+  constitution: string,
+  symptomScores: Record<string, number>
+) => {
+  const scores = Object.values(symptomScores).filter((n) => Number.isFinite(n));
+  const maxSeverity = scores.length > 0 ? Math.max(...scores) : 5;
+  const avgSeverity = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 5;
+  const severityScore = Math.max(1, Math.min(10, Math.round((maxSeverity * 0.7) + (avgSeverity * 0.3))));
+
+  const sessionsRecommended =
+    severityScore >= 9 ? 6 :
+    severityScore >= 8 ? 5 :
+    severityScore >= 6 ? 4 :
+    severityScore >= 4 ? 3 : 2;
+
+  const spacingDays =
+    severityScore >= 9 ? 3 :
+    severityScore >= 7 ? 4 :
+    severityScore >= 5 ? 5 :
+    severityScore >= 3 ? 6 : 7;
+
+  const dosha = String(constitution || "").toLowerCase();
+  const therapy =
+    dosha.includes("pitta") ? "Virechana" :
+    dosha.includes("kapha") ? "Vamana" :
+    dosha.includes("vata") ? "Basti" :
+    "Abhyanga";
+
+  const totalPriorityScore = Math.max(35, Math.min(100, Math.round((severityScore * 6.5) + Math.min(scores.length * 2, 12))));
+  return {
+    therapy,
+    sessions_recommended: sessionsRecommended,
+    spacing_days: spacingDays,
+    priority_score: totalPriorityScore,
+    severity_score: severityScore,
+    totalPriorityScore,
+    explanation: 'Recommendation generated from symptom severity and dosha profile.',
+    confidence: 72
+  };
+};
+
 const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, onComplete }) => {
-  const { user, firebaseUser, updateUserProfile } = useAuth();
+  const { user, role, firebaseUser, updateUserProfile } = useAuth();
   const { toast } = useToast();
   const { t, language } = useLanguage();
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [doctorSessionCount, setDoctorSessionCount] = useState(1);
+  const [doctorSessionDateTimes, setDoctorSessionDateTimes] = useState<Array<{ date: string; time: string }>>([{ date: '', time: '' }]);
+  const [patientEntryMode, setPatientEntryMode] = useState<'manual' | 'existing'>('manual');
+  const [availablePatients, setAvailablePatients] = useState<any[]>([]);
+  const [selectedExistingPatientId, setSelectedExistingPatientId] = useState<string>('');
 
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -76,18 +122,57 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
   // ─── FIX #6: Use dynamically generated slots ──────────────────────────────
   const [mockSlots, setMockSlots] = useState<string[]>(generateDefaultSlots());
+  const doctorTimeOptions = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
 
   useEffect(() => {
     if (!user) return;
     setFormData((prev) => ({
       ...prev,
-      name: prev.name || user.name || "",
-      email: prev.email || user.email || "",
-      phone: prev.phone || (user as any)?.phone || "",
-      reason: prev.reason || (user as any)?.reason_for_visit || "",
+      name: role === 'doctor' ? prev.name : (prev.name || user.name || ""),
+      email: role === 'doctor' ? prev.email : (prev.email || user.email || ""),
+      phone: role === 'doctor' ? prev.phone : (prev.phone || (user as any)?.phone || ""),
+      reason: role === 'doctor' ? prev.reason : (prev.reason || (user as any)?.reason_for_visit || ""),
       constitution: prev.constitution || (user as any)?.dosha || "Vata",
     }));
-  }, [user]);
+  }, [user, role]);
+
+  useEffect(() => {
+    const fetchPatients = async () => {
+      if (role !== 'doctor' || !isOpen) return;
+      try {
+        const q = query(collection(db, "users"), where("role", "==", "patient"));
+        const snapshot = await getDocs(q);
+        const patients = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setAvailablePatients(patients);
+      } catch (err) {
+        console.error("Failed to fetch patients:", err);
+      }
+    };
+    fetchPatients();
+  }, [role, isOpen]);
+
+  useEffect(() => {
+    if (role !== 'doctor') return;
+    if (patientEntryMode !== 'existing' || !selectedExistingPatientId) return;
+    const selected = availablePatients.find((p: any) => p.id === selectedExistingPatientId);
+    if (!selected) return;
+    setFormData((prev) => ({
+      ...prev,
+      name: selected.name || '',
+      email: selected.email || '',
+      phone: selected.phone || '',
+      reason: selected.reason_for_visit || prev.reason || '',
+      constitution: selected.dosha || prev.constitution || 'Vata',
+      symptoms: Array.isArray(selected.symptoms) ? selected.symptoms.map((s: any) => s.name || s).filter(Boolean) : prev.symptoms,
+      symptomScores: Array.isArray(selected.symptoms)
+        ? selected.symptoms.reduce((acc: Record<string, number>, s: any) => {
+            const key = s?.name || String(s || '');
+            if (key) acc[key] = Number(s?.score) || 5;
+            return acc;
+          }, {})
+        : prev.symptomScores,
+    }));
+  }, [role, patientEntryMode, selectedExistingPatientId, availablePatients]);
 
   // ─── FIX #5: Auto-initialise score to 5 when symptom toggled on ──────────
   const handleSymptomToggle = (symptom: string) => {
@@ -159,17 +244,27 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
       const data = await response.json();
 
       if (data.success && data.recommendation) {
+        const normalizedRecommendation = {
+          ...data.recommendation,
+          sessions_recommended: Number(data.recommendation.sessions_recommended) || buildHeuristicRecommendation(formData.constitution, formData.symptomScores).sessions_recommended,
+          spacing_days: Number(data.recommendation.spacing_days) || buildHeuristicRecommendation(formData.constitution, formData.symptomScores).spacing_days,
+          severity_score: Number(data.recommendation.severity_score) || buildHeuristicRecommendation(formData.constitution, formData.symptomScores).severity_score,
+        };
+        const totalPriorityScore =
+          Number(data.priorityResult?.totalScore) ||
+          Number(data.recommendation.totalPriorityScore) ||
+          Number(data.recommendation.priority_score) ||
+          buildHeuristicRecommendation(formData.constitution, formData.symptomScores).totalPriorityScore;
         setFormData(prev => ({
           ...prev,
           recommendation: {
-            ...data.recommendation,
-            severity_score: data.recommendation.severity_score || 5,
-            totalPriorityScore: data.priorityResult?.totalScore || 50,
+            ...normalizedRecommendation,
+            totalPriorityScore,
           }
         }));
 
         const doctors = await fetchDoctors();
-        const matched = matchDoctors(doctors, formData.symptoms, data.recommendation.therapy, formData.radiusKm);
+        const matched = matchDoctors(doctors, formData.symptoms, normalizedRecommendation.therapy, formData.radiusKm);
 
         setFormData(prev => ({ ...prev, matchedDoctors: matched }));
       } else {
@@ -183,16 +278,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
         variant: "default",
       });
 
-      const fallbackRec = {
-        therapy: 'Abhyanga (oil massage) - Fallback',
-        sessions_recommended: 3,
-        spacing_days: 7,
-        priority_score: 50,
-        severity_score: 5,
-        totalPriorityScore: 50,
-        explanation: 'Could not connect to AI services. This is a fallback recommendation based on general wellness.',
-        confidence: 70
-      };
+      const fallbackRec = buildHeuristicRecommendation(formData.constitution, formData.symptomScores);
 
       const doctors = await fetchDoctors();
       const matched = matchDoctors(doctors, formData.symptoms, fallbackRec.therapy, formData.radiusKm);
@@ -218,17 +304,47 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
   const handleBack = () => setCurrentStep(prev => Math.max(prev - 1, 1));
 
+  const setDoctorCount = (count: number) => {
+    const safe = Math.max(1, Math.min(10, count));
+    setDoctorSessionCount(safe);
+    setDoctorSessionDateTimes((prev) => {
+      const next = [...prev];
+      while (next.length < safe) next.push({ date: '', time: '' });
+      return next.slice(0, safe);
+    });
+  };
+
+  const syncDoctorSlots = (rows: Array<{ date: string; time: string }>) => {
+    const parsed = rows
+      .map((r) => {
+        if (!r.date || !r.time) return null;
+        const iso = new Date(`${r.date}T${r.time}:00`).toISOString();
+        return Number.isNaN(new Date(iso).getTime()) ? null : iso;
+      })
+      .filter(Boolean) as string[];
+    setFormData((prev) => ({ ...prev, selectedSlots: parsed }));
+  };
+
   // ─── FIX #1: Standardised field names so DoctorDashboard can see sessions ─
   // ─── FIX #2: Removed duplicate session creation (DoctorDashboard callback  ─
   //             no longer creates sessions — it just calls fetchData())        ─
   const handleComplete = async () => {
     setIsLoading(true);
     try {
-      const patientId = user?.uid || "anonymous_" + Date.now();
-      const patientName = formData.name || user?.name || "Patient";
-      const patientEmail = formData.email || user?.email || "";
-      const doctorId = formData.selectedDoctor?.id || "unknown";
-      const doctorName = formData.selectedDoctor?.name || formData.selectedDoctor?.clinicName || "Doctor";
+      const selectedExistingPatient = availablePatients.find((p: any) => p.id === selectedExistingPatientId);
+      const patientId = role === 'doctor'
+        ? (patientEntryMode === 'existing' && selectedExistingPatient ? selectedExistingPatient.id : `manual_patient_${Date.now()}`)
+        : (user?.uid || `anonymous_${Date.now()}`);
+      const patientName = role === 'doctor'
+        ? (formData.name || selectedExistingPatient?.name || "Patient")
+        : (formData.name || user?.name || "Patient");
+      const patientEmail = role === 'doctor'
+        ? (formData.email || selectedExistingPatient?.email || "")
+        : (formData.email || user?.email || "");
+      const doctorId = role === 'doctor' ? (user?.uid || "unknown") : (formData.selectedDoctor?.id || "unknown");
+      const doctorName = role === 'doctor'
+        ? (user?.name || "Doctor")
+        : (formData.selectedDoctor?.name || formData.selectedDoctor?.clinicName || "Doctor");
       const therapy = formData.recommendation?.therapy || "Panchakarma";
       const scheduledSlots = formData.selectedSlots;
       const severityScore = formData.recommendation?.severity_score || 5;
@@ -257,7 +373,8 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
         return;
       }
       const token = await firebaseUser.getIdToken();
-      const bookRes = await fetch(`${BACKEND_URL}/api/doctors/book`, {
+      const bookingEndpoint = role === 'doctor' ? '/api/doctors/book-by-doctor' : '/api/doctors/book';
+      const bookRes = await fetch(`${BACKEND_URL}${bookingEndpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -287,7 +404,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
       }
 
       // 3. Update the logged-in patient's profile with recommendation
-      if (updateUserProfile) {
+      if (updateUserProfile && role !== 'doctor') {
         await updateUserProfile({
           // Persist dosha so later booking/discovery flows can compute priority accurately.
           dosha: formData.constitution,
@@ -325,10 +442,13 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
   // ─── FIX #5: Step 2 only needs symptoms selected (scores are auto-init'd) ──
   const canProceed = () => {
     switch (currentStep) {
-      case 1: return formData.name && formData.phone && formData.reason;
+      case 1:
+        if (role !== 'doctor') return formData.name && formData.phone && formData.reason;
+        if (patientEntryMode === 'existing') return Boolean(selectedExistingPatientId);
+        return formData.name && formData.phone && formData.reason;
       case 2: return formData.symptoms.length > 0; // ← was: also requiring symptomScores to be non-empty
       case 3: return formData.recommendation;
-      case 4: return formData.selectedDoctor !== null;
+      case 4: return role === 'doctor' ? true : formData.selectedDoctor !== null;
       case 5: return formData.selectedSlots.length > 0;
       default: return false;
     }
@@ -359,6 +479,36 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                 <User className="w-5 h-5 text-primary" />
                 <h3 className="font-playfair text-xl font-semibold">{t("schedule.patientInfo")}</h3>
               </div>
+              {role === 'doctor' && (
+                <div className="space-y-2 mb-4">
+                  <Label>Patient Selection Mode</Label>
+                  <select
+                    value={patientEntryMode}
+                    onChange={(e) => setPatientEntryMode(e.target.value as 'manual' | 'existing')}
+                    className="w-full p-2 border border-border rounded-md"
+                  >
+                    <option value="manual">Manual Entry</option>
+                    <option value="existing">Select Existing Patient</option>
+                  </select>
+                </div>
+              )}
+              {role === 'doctor' && patientEntryMode === 'existing' && (
+                <div className="space-y-2 mb-4">
+                  <Label>Available Patients</Label>
+                  <select
+                    value={selectedExistingPatientId}
+                    onChange={(e) => setSelectedExistingPatientId(e.target.value)}
+                    className="w-full p-2 border border-border rounded-md"
+                  >
+                    <option value="">Select patient</option>
+                    {availablePatients.map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || 'Unknown'} ({p.email || p.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Full Name *</Label><Input value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} placeholder="Enter full name" /></div>
                 <div className="space-y-2"><Label>Phone Number *</Label><Input value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} placeholder="+91-9876543210" /></div>
@@ -479,7 +629,10 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                             setFormData(prev => ({ ...prev, selectedSlots: slotsData.slots }));
                           } else {
                             // If slot generation fails (e.g. not enough spaced slots), fallback so UI still progresses.
-                            const fallback = generateDefaultSlots();
+                            const fallback = generateDefaultSlots(
+                              Number(formData.recommendation?.sessions_recommended) || 5,
+                              Number(formData.recommendation?.spacing_days) || 3
+                            );
                             setMockSlots(fallback);
                             setFormData(prev => ({ ...prev, selectedSlots: fallback }));
                             toast({
@@ -491,7 +644,10 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                         } catch (e) {
                           console.error("Using default slots due to network error.");
                           // FIX #6: fallback uses relative dates, not past hardcoded dates
-                          const fallback = generateDefaultSlots();
+                          const fallback = generateDefaultSlots(
+                            Number(formData.recommendation?.sessions_recommended) || 5,
+                            Number(formData.recommendation?.spacing_days) || 3
+                          );
                           setMockSlots(fallback);
                           setFormData(prev => ({ ...prev, selectedSlots: fallback }));
                         }
@@ -507,18 +663,68 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
           {currentStep === 5 && (
             <Card className="ayur-card p-6">
               <div className="flex items-center space-x-2 mb-4"><Calendar className="w-5 h-5 text-primary" /><h3 className="font-playfair text-xl font-semibold">{t("schedule.selectSlots")}</h3></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {mockSlots.slice(0, formData.recommendation?.sessions_recommended || 3).map((slot, index) => (
-                  <label key={slot} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:border-primary">
-                    <div className="flex items-center space-x-3">
-                      <Checkbox checked={formData.selectedSlots.includes(slot)} onCheckedChange={(checked) => {
-                        setFormData(prev => ({ ...prev, selectedSlots: checked ? [...prev.selectedSlots, slot] : prev.selectedSlots.filter(s => s !== slot) }));
-                      }} />
-                      <div><div className="font-medium">Session {index + 1}</div><div className="text-sm text-muted-foreground">{formatSlotTime(slot)}</div></div>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              {role === 'doctor' ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Number of Sessions</Label>
+                    <select
+                      value={doctorSessionCount}
+                      onChange={(e) => setDoctorCount(Number(e.target.value))}
+                      className="w-full p-2 border border-border rounded-md"
+                    >
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    {doctorSessionDateTimes.map((row, idx) => (
+                      <div key={`doctor-slot-${idx}`} className="grid grid-cols-1 md:grid-cols-3 gap-3 border rounded-lg p-3">
+                        <div className="font-medium">Session {idx + 1}</div>
+                        <input
+                          type="date"
+                          value={row.date}
+                          onChange={(e) => {
+                            const next = [...doctorSessionDateTimes];
+                            next[idx] = { ...next[idx], date: e.target.value };
+                            setDoctorSessionDateTimes(next);
+                            syncDoctorSlots(next);
+                          }}
+                          className="p-2 border rounded-md"
+                        />
+                        <select
+                          value={row.time}
+                          onChange={(e) => {
+                            const next = [...doctorSessionDateTimes];
+                            next[idx] = { ...next[idx], time: e.target.value };
+                            setDoctorSessionDateTimes(next);
+                            syncDoctorSlots(next);
+                          }}
+                          className="p-2 border rounded-md"
+                        >
+                          <option value="">Select time</option>
+                          {doctorTimeOptions.map((tm) => (
+                            <option key={tm} value={tm}>{tm}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {mockSlots.slice(0, formData.recommendation?.sessions_recommended || 3).map((slot, index) => (
+                    <label key={slot} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:border-primary">
+                      <div className="flex items-center space-x-3">
+                        <Checkbox checked={formData.selectedSlots.includes(slot)} onCheckedChange={(checked) => {
+                          setFormData(prev => ({ ...prev, selectedSlots: checked ? [...prev.selectedSlots, slot] : prev.selectedSlots.filter(s => s !== slot) }));
+                        }} />
+                        <div><div className="font-medium">Session {index + 1}</div><div className="text-sm text-muted-foreground">{formatSlotTime(slot)}</div></div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
 

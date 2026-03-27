@@ -14,5 +14,7 @@ router.get("/search", doctorsController.search);
 
 /** POST /api/doctors/book — pending appointment + priority bump */
 router.post("/book", verifyFirebaseIdToken, requirePatient, doctorsController.book);
+/** POST /api/doctors/book-by-doctor — doctor books on behalf of patient */
+router.post("/book-by-doctor", verifyFirebaseIdToken, requireDoctor, doctorsController.bookByDoctor);
 
 export default router;

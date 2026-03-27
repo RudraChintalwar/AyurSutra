@@ -35,6 +35,13 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
   const [relatedSessions, setRelatedSessions] = useState<any[]>([]);
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
+  const [showRescheduleForm, setShowRescheduleForm] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('Need a different time slot');
+  const [reviewDate, setReviewDate] = useState('');
+  const [reviewTime, setReviewTime] = useState('');
+  const [isReviewingReschedule, setIsReviewingReschedule] = useState(false);
   const { toast } = useToast();
   const { t, language } = useLanguage();
   const { user, firebaseUser } = useAuth();
@@ -72,6 +79,13 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
       minute: '2-digit',
       timeZone: 'Asia/Kolkata'
     });
+  };
+
+  const toIso = (date: string, time: string): string | null => {
+    if (!date || !time) return null;
+    const dt = new Date(`${date}T${time}:00`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.toISOString();
   };
 
   const handleFeedbackSubmit = async (feedbackData: any) => {
@@ -126,16 +140,56 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
         toast({ title: 'Sign in required', variant: 'destructive' });
         return;
       }
+      const proposedDatetime = toIso(rescheduleDate, rescheduleTime);
+      if (!proposedDatetime) {
+        toast({ title: 'Missing date/time', description: 'Please choose your preferred date and time.', variant: 'destructive' });
+        return;
+      }
       const token = await firebaseUser.getIdToken();
       await axios.patch(
         `${API_URL}/api/sessions/${session.id}/reschedule-request`,
-        { rescheduleReason: 'Patient requested to reschedule this session' },
+        {
+          rescheduleReason: rescheduleReason || 'Patient requested to reschedule this session',
+          proposedDatetime,
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast({ title: t('sessionModal.rescheduleRequested'), description: t('sessionModal.rescheduleRequestedDesc') });
+      setShowRescheduleForm(false);
       onClose();
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to request reschedule.', variant: 'destructive' });
+    }
+  };
+
+  const handleDoctorRescheduleReview = async (action: 'approved' | 'rejected') => {
+    if (!session?.id || !firebaseUser) return;
+    setIsReviewingReschedule(true);
+    try {
+      const token = await firebaseUser.getIdToken();
+      let proposedDatetime: string | null = null;
+      if (action === 'approved') {
+        proposedDatetime = toIso(reviewDate, reviewTime);
+        if (!proposedDatetime && session?.proposed_datetime) proposedDatetime = session.proposed_datetime;
+        if (!proposedDatetime) {
+          toast({ title: 'Missing date/time', description: 'Please set an approved date and time.', variant: 'destructive' });
+          return;
+        }
+      }
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/reschedule-review`,
+        { action, proposedDatetime },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast({
+        title: action === 'approved' ? 'Reschedule approved' : 'Reschedule rejected',
+        description: action === 'approved' ? 'Patient has been notified with updated session time.' : 'Patient has been notified about rejection.',
+      });
+      onClose();
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to review reschedule request.', variant: 'destructive' });
+    } finally {
+      setIsReviewingReschedule(false);
     }
   };
 
@@ -496,6 +550,49 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
             </TabsContent>
           </Tabs>
 
+          {!isDoctor && showRescheduleForm && (
+            <div className="border rounded-lg p-4 bg-orange-50/50 space-y-3">
+              <h4 className="font-semibold">Reschedule Request</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Preferred Date</label>
+                  <input type="date" className="w-full mt-1 p-2 border rounded-md" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Preferred Time</label>
+                  <input type="time" className="w-full mt-1 p-2 border rounded-md" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason</label>
+                <textarea
+                  className="w-full mt-1 p-2 border rounded-md min-h-[72px]"
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {isDoctor && session.status === 'reschedule_requested' && (
+            <div className="border rounded-lg p-4 bg-green-50/40 space-y-3">
+              <h4 className="font-semibold">Review Reschedule Proposal</h4>
+              <p className="text-sm text-muted-foreground">
+                Patient requested: {session.proposed_datetime ? formatDateTime(session.proposed_datetime) : 'No proposed time provided'}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Approved Date</label>
+                  <input type="date" className="w-full mt-1 p-2 border rounded-md" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Approved Time</label>
+                  <input type="time" className="w-full mt-1 p-2 border rounded-md" value={reviewTime} onChange={(e) => setReviewTime(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-4 border-t">
             <Button variant="outline" onClick={onClose}>
@@ -517,9 +614,27 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               )}
               {/* Reschedule for patient */}
               {!isDoctor && (session.status === 'scheduled' || session.status === 'confirmed' || session.status === 'bumped') && (
-                <Button variant="outline" onClick={handleRescheduleRequest}>
-                  Request Reschedule
-                </Button>
+                <>
+                  {!showRescheduleForm ? (
+                    <Button variant="outline" onClick={() => setShowRescheduleForm(true)}>
+                      Request Reschedule
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={handleRescheduleRequest}>
+                      Submit Reschedule Request
+                    </Button>
+                  )}
+                </>
+              )}
+              {isDoctor && session.status === 'reschedule_requested' && (
+                <>
+                  <Button disabled={isReviewingReschedule} className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleDoctorRescheduleReview('approved')}>
+                    Approve Reschedule
+                  </Button>
+                  <Button disabled={isReviewingReschedule} variant="outline" className="text-red-600 border-red-200" onClick={() => handleDoctorRescheduleReview('rejected')}>
+                    Reject Proposal
+                  </Button>
+                </>
               )}
               {/* Complete for doctor */}
               {isDoctor && (session.status === 'confirmed' || session.status === 'scheduled') && (

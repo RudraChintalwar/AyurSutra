@@ -149,6 +149,19 @@ const PatientDashboard = () => {
   );
   const completedSessions = patientSessions.filter(s => s.status === 'completed');
   const cancelledSessions = patientSessions.filter(s => s.status === 'cancelled' || s.status === 'rejected');
+  const activePrioritySessions = patientSessions.filter((s) =>
+    ['scheduled', 'confirmed', 'pending_review', 'reschedule_requested', 'bumped'].includes(String(s.status))
+  );
+  const latestPrioritySession = activePrioritySessions[0] || patientSessions[0];
+  const currentPriorityScore =
+    Number(latestPrioritySession?.totalPriorityScore ?? latestPrioritySession?.priority) ||
+    Number(currentPatient?.llm_recommendation?.priority_score) ||
+    null;
+  const recommendedSessions = currentPatient?.llm_recommendation?.sessions_recommended || patientSessions.length || 1;
+  const recoveryRate = Math.min(
+    Math.round((completedSessions.length / recommendedSessions) * 100),
+    100
+  );
 
   const bpmHistory = useMemo(() => {
     const raw = Array.isArray((currentPatient as any)?.bpm_history) ? (currentPatient as any).bpm_history : [];
@@ -187,6 +200,8 @@ const PatientDashboard = () => {
       })
       .join(" ");
   }, [bpmHistory]);
+
+  const primaryDoctorSession = activePrioritySessions.find((s) => s.practitioner_id) || patientSessions.find((s) => s.practitioner_id);
 
   return (
     <div className="p-6 space-y-6">
@@ -228,15 +243,13 @@ const PatientDashboard = () => {
           </div>
             <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
               <div className="text-2xl font-bold text-ayur-soft-gold">
-                {currentPatient?.llm_recommendation
-                  ? Math.min(Math.round((completedSessions.length / (currentPatient.llm_recommendation.sessions_recommended || 1)) * 100), 100)
-                  : (patientSessions.length > 0 ? Math.round((completedSessions.length / patientSessions.length) * 100) : 0)}%
+                {recoveryRate}%
               </div>
               <div className="text-sm text-muted-foreground">{t("patient.recoveryProgress")}</div>
             </div>
           <div className="text-center p-3 bg-green-50 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
-              {currentPatient?.llm_recommendation?.priority_score || 'N/A'}
+              {currentPriorityScore ?? 'N/A'}
             </div>
             <div className="text-sm text-muted-foreground">{t("patient.currentPriority")}</div>
           </div>
@@ -496,7 +509,7 @@ const PatientDashboard = () => {
                     </div>
                   </div>
                   <Badge className="priority-badge-high">
-                    Priority: {currentPatient.llm_recommendation.priority_score}
+                    Priority: {currentPriorityScore ?? 'N/A'}
                   </Badge>
                 </div>
                 <p className="text-muted-foreground text-sm leading-relaxed">
@@ -519,7 +532,7 @@ const PatientDashboard = () => {
                 </div>
                 <div>
                   <div className="text-xl font-bold text-ayur-soft-gold">
-                    {Math.round((completedSessions.length / currentPatient.llm_recommendation.sessions_recommended) * 100)}%
+                    {recoveryRate}%
                   </div>
                   <div className="text-xs text-muted-foreground">{t("patientDashboard.progress")}</div>
                 </div>
@@ -653,8 +666,8 @@ const PatientDashboard = () => {
         isOpen={showMessageModal}
         onClose={() => setShowMessageModal(false)}
         recipient={{
-          id: 'dr1',
-          name: 'Dr. Sargun Mehta',
+          id: primaryDoctorSession?.practitioner_id || '',
+          name: primaryDoctorSession?.doctor_name || 'Doctor',
           avatar: '/placeholder.svg',
           role: 'doctor'
         }}

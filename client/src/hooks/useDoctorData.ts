@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Patient {
   id: string;
@@ -32,6 +33,7 @@ export interface Session {
 }
 
 export function useDoctorData() {
+  const { user } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,17 +42,26 @@ export function useDoctorData() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch patients
-        const patientsQ = query(collection(db, 'users'), where('role', '==', 'patient'));
-        const pSnap = await getDocs(patientsQ);
-        const pData = pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
-        setPatients(pData);
-
-        // Fetch sessions
-        const sessionsQ = collection(db, 'sessions'); 
+        // Fetch only this doctor's sessions.
+        const sessionsQ = user?.uid
+          ? query(collection(db, 'sessions'), where('practitioner_id', '==', user.uid))
+          : collection(db, 'sessions');
         const sSnap = await getDocs(sessionsQ);
         const sData = sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
         setSessions(sData);
+
+        // Only fetch patients who are linked to this doctor's sessions.
+        const patientIds = Array.from(new Set(sData.map((s) => s.patient_id).filter(Boolean)));
+        if (patientIds.length === 0) {
+          setPatients([]);
+          return;
+        }
+        const patientsQ = query(collection(db, 'users'), where('role', '==', 'patient'));
+        const pSnap = await getDocs(patientsQ);
+        const pData = pSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Patient))
+          .filter((p) => patientIds.includes(p.id));
+        setPatients(pData);
         
       } catch (err) {
         console.error("Error fetching doctor data:", err);
@@ -59,7 +70,7 @@ export function useDoctorData() {
       }
     };
     fetchData();
-  }, []);
+  }, [user?.uid]);
 
   return { patients, sessions, loading };
 }

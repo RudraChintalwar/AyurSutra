@@ -79,3 +79,45 @@ export async function book(req, res) {
         res.status(500).json({ error: "Failed to create booking" });
     }
 }
+
+export async function bookByDoctor(req, res) {
+    try {
+        const {
+            doctorId,
+            patientId,
+            patientName,
+            therapy,
+        } = req.body || {};
+
+        if (!patientId || !doctorId) {
+            return res.status(400).json({ error: "patientId and doctorId are required" });
+        }
+        if (req.firebaseUid && doctorId !== req.firebaseUid) {
+            return res.status(403).json({ error: "Forbidden: doctorId mismatch" });
+        }
+
+        const {
+            appointmentId,
+            sessionIds,
+        } = await doctorService.bookPatientRequest(req.body);
+
+        res.status(201).json({
+            success: true,
+            appointmentId,
+            sessionIds,
+            message: `Doctor booked ${therapy} for ${patientName || "patient"}`,
+        });
+    } catch (e) {
+        console.error("Doctor Booking Error:", e);
+        if (e.statusCode === 400) {
+            return res.status(400).json({ error: e.message });
+        }
+        if (e.statusCode === 409) {
+            return res.status(409).json({
+                error: e.message,
+                collidedSlots: e.collidedSlots || [],
+            });
+        }
+        res.status(500).json({ error: "Failed to create doctor booking" });
+    }
+}

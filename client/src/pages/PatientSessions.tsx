@@ -106,6 +106,11 @@ const PatientSessions = () => {
   const completedSessions = sessions.filter(s => s.status === 'completed');
   const cancelledSessions = sessions.filter(s => s.status === 'cancelled' || s.status === 'rejected');
   const allSessions = sessions;
+  const latestPrioritySession = upcomingSessions[0] || sessions[0];
+  const currentPriorityScore =
+    Number(latestPrioritySession?.totalPriorityScore ?? latestPrioritySession?.priority) ||
+    Number(currentPatient?.llm_recommendation?.priority_score) ||
+    null;
 
   const handleSessionClick = (session: any) => {
     setSelectedSession(session);
@@ -437,7 +442,7 @@ const PatientSessions = () => {
                 </div>
               </div>
               <Badge className="priority-badge-high">
-                Priority: {currentPatient?.llm_recommendation?.priority_score || 'N/A'}
+                Priority: {currentPriorityScore ?? 'N/A'}
               </Badge>
             </div>
             

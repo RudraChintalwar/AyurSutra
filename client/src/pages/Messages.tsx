@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Notification {
@@ -28,6 +28,9 @@ interface Notification {
   datetime: string;
   read: boolean;
   patient_id: string;
+  sender_id?: string;
+  recipient_id?: string;
+  type?: string;
   sender?: string;
 }
 
@@ -41,34 +44,47 @@ const Messages = () => {
     const fetchNotifications = async () => {
       if (!user?.uid) return;
       try {
-        // Build notifications from sessions
-        const sessionsQuery = role === 'doctor'
-          ? query(collection(db, 'sessions'))
-          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
-        const snap = await getDocs(sessionsQuery);
-        const generatedNotifications: Notification[] = snap.docs.map((doc, i) => {
-          const data = doc.data();
+        const inboundQ = query(collection(db, 'notifications'), where('recipient_id', '==', user.uid));
+        const outboundQ = query(collection(db, 'notifications'), where('sender_id', '==', user.uid));
+        const directQ = query(collection(db, 'notifications'), where('user_id', '==', user.uid));
+        const [inboundSnap, outboundSnap, directSnap] = await Promise.all([getDocs(inboundQ), getDocs(outboundQ), getDocs(directQ)]);
+
+        const mapDoc = (doc: any): Notification => {
+          const data = doc.data() || {};
           return {
             id: doc.id,
-          title: `Session ${data.status === 'scheduled' ? (language === "hi" ? 'निर्धारित' : 'Scheduled') : (language === "hi" ? 'पूर्ण' : 'Completed')}: ${data.therapy || 'Panchakarma'}`,
-            body: `Your ${data.therapy || 'therapy'} session is ${data.status}. Duration: ${data.duration_minutes || 60} minutes.`,
-            channel: 'in-app',
+            title: data.title || (language === "hi" ? "संदेश" : "Message"),
+            body: data.body || "",
+            channel: data.channel || 'in-app',
             datetime: data.datetime || new Date().toISOString(),
-            read: data.status === 'completed',
-            patient_id: data.patient_id || '',
-            sender: 'system'
+            read: Boolean(data.read),
+            patient_id: data.patient_id || data.recipient_id || data.sender_id || '',
+            sender: data.sender_role || data.sender || 'system',
+            sender_id: data.sender_id || '',
+            recipient_id: data.recipient_id || '',
+            type: data.type || 'message',
           };
-        });
-        // Add a welcome notification
+        };
+
+        const combined = [...inboundSnap.docs, ...outboundSnap.docs, ...directSnap.docs];
+        const dedup = new Map<string, Notification>();
+        combined.forEach((d) => dedup.set(d.id, mapDoc(d)));
+        const generatedNotifications = Array.from(dedup.values())
+          .filter((n) => n.type === 'message' || n.sender === 'doctor' || n.sender === 'system')
+          .sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
+
         generatedNotifications.unshift({
           id: 'welcome',
           title: language === "hi" ? 'AyurSutra में आपका स्वागत है' : 'Welcome to AyurSutra',
-          body: language === "hi" ? 'आपका खाता सेट हो गया है। अपनी आयुर्वेदिक वेलनेस यात्रा शुरू करने के लिए डैशबोर्ड देखें।' : 'Your account has been set up. Explore your dashboard to get started with your Ayurvedic wellness journey!',
+          body: language === "hi" ? 'आपके व्यक्तिगत संदेश यहां दिखेंगे।' : 'Your personal messages will appear here.',
           channel: 'in-app',
           datetime: new Date().toISOString(),
           read: false,
           patient_id: user.uid,
-          sender: 'system'
+          sender: 'system',
+          sender_id: 'system',
+          recipient_id: user.uid,
+          type: 'message',
         });
         setNotifications(generatedNotifications);
         if (generatedNotifications.length > 0) setSelectedNotification(generatedNotifications[0]);
@@ -77,7 +93,7 @@ const Messages = () => {
       }
     };
     fetchNotifications();
-  }, [user, role]);
+  }, [user, role, language]);
 
   const getChannelIcon = (channel: string) => {
     switch (channel) {

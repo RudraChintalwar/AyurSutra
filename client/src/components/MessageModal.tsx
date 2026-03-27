@@ -10,6 +10,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Paperclip, Smile } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/lib/firebase';
+import { addDoc, collection } from 'firebase/firestore';
 
 interface MessageModalProps {
   isOpen: boolean;
@@ -27,14 +30,48 @@ const MessageModal: React.FC<MessageModalProps> = ({ isOpen, onClose, recipient 
   const [message, setMessage] = useState('');
   const [priority, setPriority] = useState('normal');
   const { language } = useLanguage();
+  const { user, role } = useAuth();
   const tx = (en: string, hi: string) => (language === 'hi' ? hi : en);
   const { toast } = useToast();
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim()) {
       toast({
         title: tx("Error", "त्रुटि"),
         description: tx("Please enter a message", "कृपया संदेश दर्ज करें"),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!user?.uid || !recipient?.id) {
+      toast({
+        title: tx("Error", "त्रुटि"),
+        description: tx("Recipient unavailable", "प्राप्तकर्ता उपलब्ध नहीं है"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        type: 'message',
+        sender_id: user.uid,
+        sender_name: user.name || 'User',
+        sender_role: role || 'patient',
+        recipient_id: recipient.id,
+        recipient_name: recipient.name,
+        recipient_role: recipient.role,
+        title: subject?.trim() || tx('New message', 'नया संदेश'),
+        body: message.trim(),
+        priority,
+        channel: 'in-app',
+        read: false,
+        datetime: new Date().toISOString(),
+      });
+    } catch (err) {
+      toast({
+        title: tx("Error", "त्रुटि"),
+        description: tx("Failed to send message", "संदेश भेजने में विफल"),
         variant: "destructive",
       });
       return;

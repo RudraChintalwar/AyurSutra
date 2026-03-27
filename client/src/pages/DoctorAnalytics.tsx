@@ -54,27 +54,66 @@ const DoctorAnalytics = () => {
 
   // Generate analytics data
   const totalPatients = patients.length;
+  const totalSessions = sessions.length;
   const completedSessions = sessions.filter(s => s.status === 'completed').length;
   const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length;
-  const averagePriority = totalPatients > 0 
-    ? Math.round(patients.reduce((sum, p) => sum + (p.llm_recommendation?.priority_score || 0), 0) / totalPatients)
+  const activeStatuses = new Set(['pending_review', 'scheduled', 'confirmed', 'reschedule_requested', 'bumped']);
+  const activeSessions = sessions.filter((s) => activeStatuses.has(String(s.status)));
+  const activePatientsCount = new Set(activeSessions.map((s) => s.patient_id).filter(Boolean)).size;
+  const averagePriority = totalSessions > 0
+    ? Math.round(sessions.reduce((sum, s: any) => sum + (Number(s.totalPriorityScore ?? s.priority) || 0), 0) / totalSessions)
     : 0;
 
-  // Recovery rate data
-  const recoveryData = [
-    { month: 'Jul', rate: 78, patients: 15 },
-    { month: 'Aug', rate: 82, patients: 18 },
-    { month: 'Sep', rate: 85, patients: 22 },
-    { month: 'Oct', rate: 88, patients: 25 },
-  ];
+  const recoveryRate = totalSessions > 0
+    ? Math.round((completedSessions / totalSessions) * 100)
+    : 0;
 
-  // Session completion data
-  const sessionData = [
-    { therapy: 'Virechana', completed: 8, scheduled: 3, success_rate: 92 },
-    { therapy: 'Vamana', completed: 5, scheduled: 2, success_rate: 88 },
-    { therapy: 'Basti', completed: 12, scheduled: 4, success_rate: 95 },
-    { therapy: 'Abhyanga', completed: 15, scheduled: 6, success_rate: 90 },
-  ];
+  const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
+  const monthLabel = (d: Date) =>
+    d.toLocaleDateString(language === "hi" ? "hi-IN" : "en-IN", { month: "short" });
+
+  const now = new Date();
+  const recentMonths = Array.from({ length: 4 }, (_, i) => {
+    const dt = new Date(now.getFullYear(), now.getMonth() - (3 - i), 1);
+    return dt;
+  });
+
+  const recoveryData = recentMonths.map((monthDate) => {
+    const key = monthKey(monthDate);
+    const monthSessions = sessions.filter((s) => {
+      if (!s?.datetime) return false;
+      const d = new Date(s.datetime);
+      return !Number.isNaN(d.getTime()) && monthKey(d) === key;
+    });
+    const monthCompleted = monthSessions.filter((s) => s.status === "completed").length;
+    const rate = monthSessions.length > 0 ? Math.round((monthCompleted / monthSessions.length) * 100) : 0;
+    return {
+      month: monthLabel(monthDate),
+      rate,
+      patients: new Set(monthSessions.map((s) => s.patient_id).filter(Boolean)).size,
+    };
+  });
+
+  const latestRate = recoveryData[recoveryData.length - 1]?.rate ?? 0;
+  const previousRate = recoveryData[recoveryData.length - 2]?.rate ?? latestRate;
+  const recoveryDelta = latestRate - previousRate;
+
+  // Dynamic therapy performance
+  const therapyMap = new Map<string, { completed: number; scheduled: number; total: number }>();
+  sessions.forEach((s) => {
+    const therapy = String(s.therapy || "Panchakarma");
+    const curr = therapyMap.get(therapy) || { completed: 0, scheduled: 0, total: 0 };
+    curr.total += 1;
+    if (s.status === "completed") curr.completed += 1;
+    if (activeStatuses.has(String(s.status))) curr.scheduled += 1;
+    therapyMap.set(therapy, curr);
+  });
+  const sessionData = Array.from(therapyMap.entries()).map(([therapy, v]) => ({
+    therapy,
+    completed: v.completed,
+    scheduled: v.scheduled,
+    success_rate: v.total > 0 ? Math.round((v.completed / v.total) * 100) : 0,
+  }));
 
   // Dosha distribution
   const doshaData = [
@@ -83,13 +122,25 @@ const DoctorAnalytics = () => {
     { name: 'Kapha', value: patients.filter(p => !p.dosha?.includes('Vata') && !p.dosha?.includes('Pitta')).length, color: '#10B981' }, // Fallback to Kapha or unknown
   ];
 
-  // Patient satisfaction data
-  const satisfactionData = [
-    { week: 'W1', satisfaction: 4.2, sessions: 8 },
-    { week: 'W2', satisfaction: 4.5, sessions: 12 },
-    { week: 'W3', satisfaction: 4.3, sessions: 10 },
-    { week: 'W4', satisfaction: 4.6, sessions: 15 },
-  ];
+  // Dynamic weekly quality trend (proxy 0-5 based on completed ratio)
+  const weekBuckets = Array.from({ length: 4 }, (_, i) => {
+    const end = new Date();
+    end.setDate(end.getDate() - (3 - i) * 7);
+    const start = new Date(end);
+    start.setDate(end.getDate() - 6);
+    return { start, end, label: `W${i + 1}` };
+  });
+  const satisfactionData = weekBuckets.map((w) => {
+    const weekSessions = sessions.filter((s) => {
+      if (!s?.datetime) return false;
+      const d = new Date(s.datetime);
+      return !Number.isNaN(d.getTime()) && d >= w.start && d <= w.end;
+    });
+    const done = weekSessions.filter((s) => s.status === "completed").length;
+    const satisfaction = weekSessions.length > 0 ? Number(((done / weekSessions.length) * 5).toFixed(1)) : 0;
+    return { week: w.label, satisfaction, sessions: weekSessions.length };
+  });
+  const averageSatisfaction = satisfactionData.reduce((sum, w) => sum + w.satisfaction, 0) / Math.max(satisfactionData.filter((w) => w.sessions > 0).length, 1);
 
   return (
     <div className="p-6 space-y-6">
@@ -126,7 +177,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-slide-up">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-2xl font-bold text-primary">{totalPatients}</div>
+              <div className="text-2xl font-bold text-primary">{activePatientsCount}</div>
               <div className="text-sm text-muted-foreground">{t("doctorAnalytics.activePatients")}</div>
             </div>
             <div className="p-3 bg-primary/10 rounded-lg">
@@ -134,16 +185,14 @@ const DoctorAnalytics = () => {
             </div>
           </div>
           <div className="flex items-center text-sm mt-2">
-            <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
-            <span className="text-green-600">+15%</span>
-            <span className="text-muted-foreground ml-1">{t("doctorAnalytics.vsLastMonth")}</span>
+            <span className="text-muted-foreground ml-1">{totalPatients} total</span>
           </div>
         </Card>
 
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-2xl font-bold text-accent">85%</div>
+              <div className="text-2xl font-bold text-accent">{recoveryRate}%</div>
               <div className="text-sm text-muted-foreground">{t("patient.recoveryProgress")}</div>
             </div>
             <div className="p-3 bg-accent/10 rounded-lg">
@@ -151,8 +200,14 @@ const DoctorAnalytics = () => {
             </div>
           </div>
           <div className="flex items-center text-sm mt-2">
-            <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
-            <span className="text-green-600">+3%</span>
+            {recoveryDelta >= 0 ? (
+              <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
+            ) : (
+              <TrendingDown className="w-4 h-4 text-red-600 mr-1" />
+            )}
+            <span className={recoveryDelta >= 0 ? "text-green-600" : "text-red-600"}>
+              {recoveryDelta >= 0 ? "+" : ""}{recoveryDelta}%
+            </span>
             <span className="text-muted-foreground ml-1">{t("doctorAnalytics.improvement")}</span>
           </div>
         </Card>
@@ -175,7 +230,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-2xl font-bold text-ayur-soft-gold">4.5</div>
+              <div className="text-2xl font-bold text-ayur-soft-gold">{averageSatisfaction.toFixed(1)}</div>
               <div className="text-sm text-muted-foreground">{t("doctorAnalytics.avgSatisfaction")}</div>
             </div>
             <div className="p-3 bg-ayur-soft-gold/10 rounded-lg">
@@ -197,8 +252,8 @@ const DoctorAnalytics = () => {
               <TrendingUp className="w-5 h-5 mr-2 text-primary" />
               {t("doctorAnalytics.recoveryRateTrend")}
             </h3>
-            <Badge className="bg-green-100 text-green-700 border-green-200">
-              +10% This Quarter
+            <Badge className={recoveryDelta >= 0 ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}>
+              {recoveryDelta >= 0 ? "+" : ""}{recoveryDelta}% {language === "hi" ? "पिछले महीने से" : "vs last month"}
             </Badge>
           </div>
           
@@ -235,7 +290,7 @@ const DoctorAnalytics = () => {
           </h3>
           
           <div className="space-y-4">
-            {sessionData.map((therapy, index) => (
+            {sessionData.length > 0 ? sessionData.map((therapy, index) => (
               <div key={therapy.therapy} className="animate-slide-up" style={{ animationDelay: `${index * 0.1}s` }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">{therapy.therapy}</span>
@@ -248,7 +303,7 @@ const DoctorAnalytics = () => {
                 </div>
                 <Progress value={therapy.success_rate} className="h-2" />
               </div>
-            ))}
+            )) : <div className="text-sm text-muted-foreground">{language === "hi" ? "अभी कोई सत्र डेटा नहीं है।" : "No session data available yet."}</div>}
           </div>
         </Card>
 
@@ -357,6 +412,9 @@ const DoctorAnalytics = () => {
                   </div>
                 </div>
               ))}
+            {sessionData.length === 0 && (
+              <div className="text-sm text-muted-foreground">{language === "hi" ? "अभी कोई थेरेपी प्रदर्शन डेटा नहीं है।" : "No therapy performance data yet."}</div>
+            )}
           </div>
         </Card>
 
@@ -368,8 +426,17 @@ const DoctorAnalytics = () => {
           
           <div className="space-y-3">
             {patients
-              .filter(p => (p.llm_recommendation?.priority_score || 0) >= 80)
-              .map((patient, index) => (
+              .map((patient) => {
+                const patientSessions = sessions.filter((s: any) => s.patient_id === patient.id);
+                const maxPriority = patientSessions.reduce((mx: number, s: any) => {
+                  const n = Number(s.totalPriorityScore ?? s.priority) || 0;
+                  return Math.max(mx, n);
+                }, 0);
+                return { patient, maxPriority };
+              })
+              .filter((x) => x.maxPriority >= 80)
+              .sort((a, b) => b.maxPriority - a.maxPriority)
+              .map(({ patient, maxPriority }, index) => (
                 <div
                   key={patient.id}
                   className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg animate-fade-in cursor-pointer hover:bg-red-100 transition-colors"
@@ -390,7 +457,7 @@ const DoctorAnalytics = () => {
                     </div>
                   </div>
                   <Badge className="priority-badge-high">
-                    {patient.llm_recommendation?.priority_score || 0}
+                    {maxPriority}
                   </Badge>
                 </div>
               ))}

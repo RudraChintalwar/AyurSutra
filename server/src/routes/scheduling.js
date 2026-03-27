@@ -19,6 +19,39 @@ const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
+function buildHeuristicRecommendation({ dosha = "", severityScore = 5, reason = "", symptoms = [] }) {
+    const sev = Math.max(1, Math.min(10, Number(severityScore) || 5));
+    const symptomCount = Array.isArray(symptoms) ? symptoms.length : 0;
+    const sessionsRecommended =
+        sev >= 9 ? 6 :
+        sev >= 8 ? 5 :
+        sev >= 6 ? 4 :
+        sev >= 4 ? 3 : 2;
+    const spacingDays =
+        sev >= 9 ? 3 :
+        sev >= 7 ? 4 :
+        sev >= 5 ? 5 :
+        sev >= 3 ? 6 : 7;
+    const d = String(dosha || "").toLowerCase();
+    const therapy =
+        d.includes("pitta") ? "Virechana" :
+        d.includes("kapha") ? "Vamana" :
+        d.includes("vata") ? "Basti" :
+        "Abhyanga";
+    const priorityScore = Math.max(35, Math.min(100, Math.round((sev * 6.5) + Math.min(symptomCount * 2, 12))));
+    return {
+        therapy,
+        sessions_recommended: sessionsRecommended,
+        spacing_days: spacingDays,
+        priority_score: priorityScore,
+        explanation: `Based on reported severity (${sev}/10) and dosha profile, ${therapy} is recommended.${reason ? ` Focus area: ${reason}.` : ""}`,
+        confidence: 72,
+        precautions_pre: ["Stay hydrated", "Follow light satvic diet", "Sleep adequately before session"],
+        precautions_post: ["Avoid heavy meals for 24h", "Rest and hydrate", "Report adverse symptoms promptly"],
+        clinical_summary: `Heuristic recommendation generated from symptom severity and dosha pattern. Severity estimated at ${sev}/10 with ${sessionsRecommended} sessions spaced ${spacingDays} day(s) apart.`,
+    };
+}
+
 function assertBumpOwnership(bumped, inserted, { doctorUid, patientUid }) {
     const bDoc = bumped.practitioner_id || bumped.doctorId;
     const iDoc = inserted.practitioner_id || inserted.doctorId;
@@ -267,6 +300,23 @@ async function putEventOnUserCalendar(uid, basePayload, legacyAccessToken = null
     return ev;
 }
 
+async function createInAppNotification({ userId, title, body, sender = "system", senderRole = "system" }) {
+    if (!userId) return;
+    await firestoreDb.collection("notifications").add({
+        user_id: userId,
+        recipient_id: userId,
+        recipient_role: "user",
+        title,
+        body,
+        sender,
+        sender_role: senderRole,
+        channel: "in-app",
+        type: "message",
+        read: false,
+        datetime: new Date().toISOString(),
+    });
+}
+
 // ─── Asset Inventory (Mock physical constraint DB) ────────
 const ASSET_INVENTORY = {
     "Virechana": { room: "Detox Room A", specializedTherapists: ["Dr. Sharma", "Dr. Iyer"] },
@@ -361,17 +411,22 @@ Respond in this exact JSON format:
   "clinical_summary": "<A 3-4 sentence professional clinical summary for the doctor reviewing this case. Include the key findings, symptom analysis, and rationale for the recommended therapy.>"
 }`;
 
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: prompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.3,
-            max_tokens: 600,
-            response_format: { type: "json_object" },
-        });
-
-        const recommendation = JSON.parse(
-            completion.choices[0]?.message?.content || "{}"
-        );
+        let recommendation = null;
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [{ role: "user", content: prompt }],
+                model: "llama-3.3-70b-versatile",
+                temperature: 0.3,
+                max_tokens: 600,
+                response_format: { type: "json_object" },
+            });
+            recommendation = JSON.parse(
+                completion.choices[0]?.message?.content || "{}"
+            );
+        } catch (groqErr) {
+            console.error("Groq recommendation unavailable, using heuristic fallback:", groqErr.message);
+            recommendation = buildHeuristicRecommendation({ dosha, severityScore, reason, symptoms });
+        }
 
         // 4. Calculate initial priority score
         const priorityResult = calculatePriorityScore({
@@ -383,10 +438,15 @@ Respond in this exact JSON format:
             createdAt: new Date().toISOString(),
         });
 
+        const heuristic = buildHeuristicRecommendation({ dosha, severityScore, reason, symptoms });
         res.json({
             success: true,
             recommendation: {
                 ...recommendation,
+                // Keep these fully severity-driven to avoid static/fake values from LLM defaults.
+                sessions_recommended: heuristic.sessions_recommended,
+                spacing_days: heuristic.spacing_days,
+                priority_score: priorityResult.totalScore,
                 severity_score: severityScore,
             },
             mlPrediction: mlPrediction?.predictions || null,
@@ -566,6 +626,17 @@ router.post("/appointments/:id/review", verifyFirebaseIdToken, requireDoctor, as
                     console.error("Rejection email failed:", e.message);
                 }
             }
+            try {
+                await createInAppNotification({
+                    userId: s.patient_id,
+                    title: "Session update",
+                    body: `Your ${s.therapy || "session"} request could not be confirmed. Please pick another slot.`,
+                    sender: doctorId,
+                    senderRole: "doctor",
+                });
+            } catch (notifErr) {
+                console.error("Rejection in-app notification failed:", notifErr.message);
+            }
             return res.json({
                 success: true,
                 sessionId: id,
@@ -705,6 +776,21 @@ router.post("/appointments/:id/review", verifyFirebaseIdToken, requireDoctor, as
             } catch (e) {
                 console.error("Confirmation email failed:", e.message);
             }
+        }
+        try {
+            await createInAppNotification({
+                userId: s.patient_id,
+                title: "Session confirmed",
+                body: `Your ${finalTherapy} session is confirmed for ${new Date(finalDatetime).toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                })}.`,
+                sender: doctorId,
+                senderRole: "doctor",
+            });
+        } catch (notifErr) {
+            console.error("Confirmation in-app notification failed:", notifErr.message);
         }
 
         const refreshed = await sessionRef.get();

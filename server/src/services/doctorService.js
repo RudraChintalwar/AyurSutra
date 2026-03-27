@@ -76,6 +76,23 @@ export function appointmentSlotIntersections(requestedSlots, existingSlots) {
     });
 }
 
+async function createInAppNotification({ userId, title, body, sender = "system" }) {
+    if (!userId) return;
+    await db.collection("notifications").add({
+        user_id: userId,
+        recipient_id: userId,
+        recipient_role: "user",
+        title,
+        body,
+        sender,
+        sender_role: sender,
+        channel: "in-app",
+        type: "message",
+        read: false,
+        datetime: new Date().toISOString(),
+    });
+}
+
 function therapyMatchesDoctor(data, requiredTherapy) {
     if (!requiredTherapy) return true;
     const nt = String(requiredTherapy).toLowerCase().trim();
@@ -245,6 +262,8 @@ export async function bookPatientRequest(body) {
     const bumpMessage = "A critical case required your time slot. Please reschedule.";
     const appointmentsToBump = new Map();
     const orphanSessionsToBump = new Map();
+    const requestedSorted = [...requestedSlotTimes].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    let promotedSlot = null;
 
     const apptSnap = await db
         .collection("appointments")
@@ -300,6 +319,50 @@ export async function bookPatientRequest(body) {
             });
         }
     });
+
+    // Priority preemption: if incoming high-priority request asks for later slots,
+    // promote it to the earliest lower-priority upcoming slot for this doctor.
+    const requestedFirst = requestedSorted[0];
+    if (requestedFirst) {
+        const candidates = [];
+        sessSnap.forEach((docSnap) => {
+            const data = docSnap.data();
+            const dt = data.datetime || data.scheduled_date;
+            if (!dt) return;
+            if (String(data.patient_id) === String(patientId)) return;
+            if (!BLOCKING_SESSION_STATUSES.includes(String(data.status))) return;
+            // Preempt only when incoming request is currently later than this lower-priority slot.
+            if (new Date(dt).getTime() >= new Date(requestedFirst).getTime()) return;
+            const existingPriority = numericPriorityFromFirestore(data);
+            if (trustedPriority <= existingPriority) return;
+            candidates.push({ id: docSnap.id, data, existingPriority, dt });
+        });
+        candidates.sort((a, b) => new Date(a.dt).getTime() - new Date(b.dt).getTime());
+        const chosen = candidates[0];
+        if (chosen) {
+            promotedSlot = chosen.dt;
+            const apptId = chosen.data.appointment_id;
+            if (apptId) {
+                if (!appointmentsToBump.has(apptId)) {
+                    appointmentsToBump.set(apptId, {
+                        id: apptId,
+                        ref: db.collection("appointments").doc(apptId),
+                        data: null,
+                        collisionSlots: [chosen.dt],
+                        existingPriority: chosen.existingPriority,
+                        fromSession: chosen.id,
+                    });
+                }
+            } else {
+                orphanSessionsToBump.set(chosen.id, {
+                    id: chosen.id,
+                    ref: db.collection("sessions").doc(chosen.id),
+                    data: chosen.data,
+                    existingPriority: chosen.existingPriority,
+                });
+            }
+        }
+    }
 
     async function promoteSessionToOrphanIfNeeded(entry) {
         if (!entry.fromSession) return;
@@ -412,6 +475,11 @@ export async function bookPatientRequest(body) {
     }
 
     const appointmentRef = db.collection("appointments").doc();
+    const finalRequestedSlotTimes = promotedSlot
+        ? [promotedSlot, ...requestedSorted.slice(1)]
+        : requestedSlotTimes;
+    const normalizedFinalSlots = Array.from(new Set(finalRequestedSlotTimes))
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
     const appointmentDoc = {
         patientId,
         patientName: patientName || "Patient",
@@ -420,8 +488,8 @@ export async function bookPatientRequest(body) {
         doctorName: doctorName || "",
         clinicName: clinicName || "",
         therapy,
-        scheduledSlots: requestedSlotTimes,
-        totalSessions: requestedSlotTimes.length,
+        scheduledSlots: normalizedFinalSlots,
+        totalSessions: normalizedFinalSlots.length,
         intakeId: intakeId || null,
         status: "pending",
         priority: trustedPriority,
@@ -434,12 +502,12 @@ export async function bookPatientRequest(body) {
     batch.set(appointmentRef, appointmentDoc);
 
     const sessionIds = [];
-    for (let i = 0; i < requestedSlotTimes.length; i++) {
+    for (let i = 0; i < normalizedFinalSlots.length; i++) {
         const sessionRef = db.collection("sessions").doc();
         sessionIds.push(sessionRef.id);
         slotBlocks.addOccupancyWrite(batch, db, {
             doctorId,
-            iso: requestedSlotTimes[i],
+            iso: normalizedFinalSlots[i],
             appointmentId: appointmentRef.id,
             sessionId: sessionRef.id,
             patientId,
@@ -459,9 +527,9 @@ export async function bookPatientRequest(body) {
             appointment_id: appointmentRef.id,
             intake_id: intakeId || null,
             therapy,
-            datetime: requestedSlotTimes[i],
+            datetime: normalizedFinalSlots[i],
             session_number: i + 1,
-            total_sessions: requestedSlotTimes.length,
+            total_sessions: normalizedFinalSlots.length,
             duration_minutes: durationMinutesForNewSession,
             status: "pending_review",
             doctor_approval: "pending",
@@ -512,6 +580,28 @@ export async function bookPatientRequest(body) {
         console.error("Bump notifications failed:", bumpErr.message);
     }
 
+    // In-app bump notifications for affected patients
+    try {
+        for (const bumped of bumpedAppointments) {
+            await createInAppNotification({
+                userId: bumped.patientId || bumped.patient_id,
+                title: "Session reschedule required",
+                body: "A higher-priority case required your slot. Please select a new time.",
+                sender: "system",
+            });
+        }
+        for (const [, os] of orphanSessionsToBump) {
+            await createInAppNotification({
+                userId: os.data?.patient_id,
+                title: "Session reschedule required",
+                body: "A higher-priority case required your slot. Please select a new time.",
+                sender: "system",
+            });
+        }
+    } catch (notifErr) {
+        console.error("In-app bump notifications failed:", notifErr.message);
+    }
+
     try {
         const doctorDoc = await db.collection("users").doc(doctorId).get();
         const doctorEmail = doctorDoc.exists ? doctorDoc.data()?.email : null;
@@ -531,6 +621,16 @@ export async function bookPatientRequest(body) {
         }
     } catch (notifErr) {
         console.error("Doctor notification failed:", notifErr.message);
+    }
+    try {
+        await createInAppNotification({
+            userId: doctorId,
+            title: "New booking request",
+            body: `${patientName || "Patient"} requested ${therapy}. Priority ${trustedPriority}.`,
+            sender: "patient",
+        });
+    } catch (e) {
+        console.error("Doctor in-app notification failed:", e.message);
     }
 
     return {

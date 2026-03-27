@@ -45,7 +45,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       if (!user?.uid) return;
       try {
         const sessionsQuery = role === 'doctor'
-          ? query(collection(db, 'sessions'))
+          ? query(collection(db, 'sessions'), where('practitioner_id', '==', user.uid))
           : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
         const snap = await getDocs(sessionsQuery);
         const important = snap.docs.filter((d) => {

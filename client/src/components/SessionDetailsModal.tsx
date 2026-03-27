@@ -102,6 +102,48 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
     onClose();
   };
 
+  const handleRescheduleReview = async (action: "approved" | "rejected") => {
+    if (!firebaseUser) return;
+    setIsActioning(true);
+    try {
+      const token = await firebaseUser.getIdToken();
+      const proposedRaw =
+        action === "approved"
+          ? window.prompt(
+              "Enter approved date/time (YYYY-MM-DD HH:mm)",
+              (session as any)?.proposed_datetime
+                ? new Date((session as any).proposed_datetime).toISOString().slice(0, 16).replace("T", " ")
+                : ""
+            )
+          : null;
+      let proposedDatetime = null as string | null;
+      if (action === "approved") {
+        if (proposedRaw && proposedRaw.trim()) {
+          const parsed = new Date(proposedRaw.trim().replace(" ", "T"));
+          if (!Number.isNaN(parsed.getTime())) proposedDatetime = parsed.toISOString();
+        }
+        if (!proposedDatetime && (session as any)?.proposed_datetime) {
+          proposedDatetime = (session as any).proposed_datetime;
+        }
+      }
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/reschedule-review`,
+        { action, proposedDatetime },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast({
+        title: action === "approved" ? "Reschedule approved" : "Reschedule rejected",
+        description: action === "approved" ? "Patient notified with updated slot." : "Patient notified of rejection.",
+      });
+      onRefresh?.();
+      onClose();
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to review reschedule request.", variant: "destructive" });
+    } finally {
+      setIsActioning(false);
+    }
+  };
+
   // ─── FIX #3: handleCancel now writes to Firestore ────────────────────────
   const handleCancel = async () => {
     if (!firebaseUser) {
@@ -213,6 +255,12 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                   <span className="text-muted-foreground">{t("sessionDetails.dateTime")}</span>
                   <div className="font-medium text-right">{formatDateTime(session.datetime)}</div>
                 </div>
+                {(session as any).proposed_datetime && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Requested New Time</span>
+                    <div className="font-medium text-right">{formatDateTime((session as any).proposed_datetime)}</div>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">{t("sessionDetails.therapy")}</span>
                   <span className="font-medium">{session.therapy}</span>
@@ -304,6 +352,17 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                 <Button onClick={handleComplete} disabled={isActioning} className="ayur-button-hero">
                   {isActioning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
                   {t("sessionDetails.markComplete")}
+                </Button>
+              </>
+            )}
+            {session.status === 'reschedule_requested' && (
+              <>
+                <Button onClick={() => handleRescheduleReview("approved")} disabled={isActioning} className="bg-green-600 hover:bg-green-700 text-white">
+                  {isActioning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Approve Reschedule
+                </Button>
+                <Button variant="outline" onClick={() => handleRescheduleReview("rejected")} disabled={isActioning} className="text-red-600 hover:text-red-700">
+                  Reject Proposal
                 </Button>
               </>
             )}

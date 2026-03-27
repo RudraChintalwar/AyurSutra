@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SessionDetailsModal from '@/components/SessionDetailsModal';
 import FullScheduleModal from '@/components/FullScheduleModal';
 import FilterModal from '@/components/FilterModal';
+import SchedulingWizard from '@/components/SchedulingWizard';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ const DoctorCalendar = () => {
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isSessionDetailsModalOpen, setIsSessionDetailsModalOpen] = useState(false);
   const [isFullScheduleModalOpen, setIsFullScheduleModalOpen] = useState(false);
+  const [isSchedulingWizardOpen, setIsSchedulingWizardOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<any>(null);
   
@@ -126,7 +128,7 @@ const DoctorCalendar = () => {
         </div>
         <Button 
           className="ayur-button-accent"
-          onClick={() => setIsFullScheduleModalOpen(true)}
+          onClick={() => setIsSchedulingWizardOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
           {t("doctor.scheduleSession")}
@@ -324,7 +326,7 @@ const DoctorCalendar = () => {
                     variant="outline" 
                     size="sm" 
                     className="mt-3"
-                    onClick={() => setIsFullScheduleModalOpen(true)}
+                    onClick={() => setIsSchedulingWizardOpen(true)}
                   >
                     Schedule First Session
                   </Button>
@@ -555,6 +557,11 @@ const DoctorCalendar = () => {
       <FullScheduleModal
         isOpen={isFullScheduleModalOpen}
         onClose={() => setIsFullScheduleModalOpen(false)}
+      />
+      <SchedulingWizard
+        isOpen={isSchedulingWizardOpen}
+        onClose={() => setIsSchedulingWizardOpen(false)}
+        onComplete={() => setIsSchedulingWizardOpen(false)}
       />
       
       <FilterModal

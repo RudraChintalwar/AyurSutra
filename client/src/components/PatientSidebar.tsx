@@ -32,6 +32,7 @@ export function PatientSidebar() {
   const patientItems = [
     { title: t('sidebar.myDashboard'), url: '/patient-dashboard', icon: LayoutDashboard },
     { title: t('sidebar.mySessions'), url: '/patient/sessions', icon: Calendar },
+    { title: t('sidebar.messages'), url: '/patient/messages', icon: Bell },
     { title: t('sidebar.dietPlanner'), url: '/diet-plan', icon: Activity },
     { title: t('sidebar.bpmChecker'), url: '/pulse-monitor', icon: HeartPulse },
     { title: t('sidebar.herbalRemedies'), url: '/remedies', icon: Leaf },

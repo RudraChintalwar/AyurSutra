@@ -8,6 +8,7 @@ router.use(verifyFirebaseIdToken);
 router.patch("/:id/complete", sessionsController.complete);
 router.patch("/:id/cancel", sessionsController.cancel);
 router.patch("/:id/reschedule-request", sessionsController.rescheduleRequest);
+router.patch("/:id/reschedule-review", sessionsController.rescheduleReview);
 router.patch("/:id/patient-feedback", sessionsController.patientFeedback);
 router.delete("/:id", sessionsController.removeSession);
 

@@ -66,7 +66,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
       if (!user?.uid) return;
       try {
         const sessionsQuery = role === 'doctor'
-          ? query(collection(db, 'sessions'))
+          ? query(collection(db, 'sessions'), where('practitioner_id', '==', user.uid))
           : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
         const snap = await getDocs(sessionsQuery);
         const generated: NotificationItem[] = snap.docs.map(doc => {
@@ -85,6 +85,20 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
             sender: 'system'
           };
         });
+        const directQ = query(collection(db, 'notifications'), where('user_id', '==', user.uid));
+        const directSnap = await getDocs(directQ);
+        const directNotifications: NotificationItem[] = directSnap.docs.map((doc) => {
+          const data: any = doc.data() || {};
+          return {
+            id: `direct-${doc.id}`,
+            title: data.title || tx('Notification', 'सूचना'),
+            body: data.body || '',
+            channel: data.channel || 'in-app',
+            datetime: data.datetime || new Date().toISOString(),
+            read: Boolean(data.read),
+            sender: data.sender || 'system',
+          };
+        });
         generated.unshift({
           id: 'welcome',
           title: tx('Welcome to AyurSutra', 'AyurSutra में आपका स्वागत है'),
@@ -94,7 +108,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
           read: false,
           sender: 'system'
         });
-        setNotifications(generated);
+        setNotifications([...directNotifications, ...generated].sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime()));
       } catch (err) {
         console.error('Error fetching notifications:', err);
       }

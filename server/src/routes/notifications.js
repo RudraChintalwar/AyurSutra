@@ -11,10 +11,20 @@ async function getRequesterEmailAndRole(firebaseUid) {
     if (!snap.exists) return { email: null, role: null, isAdmin: false };
     const data = snap.data() || {};
     return {
+        uid: firebaseUid,
         email: data.email || data.patient_email || null,
         role: data.role || null,
         isAdmin: data.isAdmin === true || data.role === "admin",
     };
+}
+
+function canSendToAddress({ requesterEmail, role, isAdmin, to }) {
+    if (isAdmin) return true;
+    // Doctors are allowed to notify their assigned patients.
+    if (role === "doctor") return true;
+    // Patients can only send to their own email.
+    if (!requesterEmail) return false;
+    return String(to).trim().toLowerCase() === String(requesterEmail).trim().toLowerCase();
 }
 
 // ─── SendGrid (primary) or Gmail SMTP (fallback) ─────────
@@ -75,16 +85,16 @@ async function sendEmail({ to, subject, html, text }) {
 export { sendEmail };
 
 // ─── Send email notification ─────────────────────────────
-router.post("/send-email", verifyFirebaseIdToken, async (req, res) => {
+async function handleSendEmail(req, res) {
     try {
         const { to, subject, html, text } = req.body;
         if (!to || typeof to !== "string") {
             return res.status(400).json({ success: false, error: "`to` is required" });
         }
 
-        const { email: requesterEmail, isAdmin } = await getRequesterEmailAndRole(req.firebaseUid);
-        if (!isAdmin && requesterEmail && String(to).trim().toLowerCase() !== String(requesterEmail).trim().toLowerCase()) {
-            return res.status(403).json({ success: false, error: "Forbidden: can only email your own address" });
+        const { email: requesterEmail, role, isAdmin } = await getRequesterEmailAndRole(req.firebaseUid);
+        if (!canSendToAddress({ requesterEmail, role, isAdmin, to })) {
+            return res.status(403).json({ success: false, error: "Forbidden: email recipient not allowed" });
         }
 
         const method = await sendEmail({ to, subject, html, text });
@@ -96,7 +106,11 @@ router.post("/send-email", verifyFirebaseIdToken, async (req, res) => {
             error: "Failed to send email",
         });
     }
-});
+}
+
+router.post("/send-email", verifyFirebaseIdToken, handleSendEmail);
+// Backward-compatible alias used by some client pages.
+router.post("/send", verifyFirebaseIdToken, handleSendEmail);
 
 // ─── Send session reminder ───────────────────────────────
 router.post("/session-reminder", verifyFirebaseIdToken, async (req, res) => {

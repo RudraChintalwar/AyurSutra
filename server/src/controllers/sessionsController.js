@@ -4,6 +4,7 @@
 import { admin } from "../middleware/auth.js";
 import * as slotBlocks from "../services/slotBlockService.js";
 import { removeSessionCalendarEventsFromGoogle } from "../utils/googleCalendarUser.js";
+import { sendEmail } from "../routes/notifications.js";
 
 const db = admin.firestore();
 
@@ -79,6 +80,23 @@ async function deleteSlotBlockForSession(session) {
     const batch = db.batch();
     slotBlocks.addDeletesForDoctorSlots(batch, db, doctorId, [iso], durationMinutes);
     await batch.commit();
+}
+
+async function createInAppNotification({ userId, title, body, sender = "system" }) {
+    if (!userId) return;
+    await db.collection("notifications").add({
+        user_id: userId,
+        recipient_id: userId,
+        recipient_role: "user",
+        title,
+        body,
+        sender,
+        sender_role: sender,
+        channel: "in-app",
+        type: "message",
+        read: false,
+        datetime: new Date().toISOString(),
+    });
 }
 
 export async function complete(req, res) {
@@ -182,19 +200,182 @@ export async function rescheduleRequest(req, res) {
 
         const reason =
             req.body?.rescheduleReason || "Patient requested to reschedule this session";
+        const proposedDatetimeRaw = req.body?.proposedDatetime || null;
+        const proposedDatetime = proposedDatetimeRaw ? new Date(proposedDatetimeRaw).toISOString() : null;
         const now = new Date().toISOString();
 
         await ref.update({
             status: "reschedule_requested",
             reschedule_reason: reason,
+            proposed_datetime: proposedDatetime,
+            reschedule_requested_at: now,
+            previous_status_before_reschedule: s.status || "scheduled",
             updated_at: now,
         });
+
+        // Notify assigned doctor when patient requests reschedule
+        const doctorId = s.practitioner_id;
+        if (doctorId) {
+            try {
+                const doctorSnap = await db.collection("users").doc(doctorId).get();
+                const doctorEmail = doctorSnap.exists ? doctorSnap.data()?.email : null;
+                if (doctorEmail) {
+                    await sendEmail({
+                        to: doctorEmail,
+                        subject: `Reschedule Requested — ${s.therapy || "Session"}`,
+                        html: `<p>Patient <b>${s.patient_name || "Patient"}</b> requested to reschedule the session.</p>
+                               <p><b>Current slot:</b> ${new Date(s.datetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>
+                               ${proposedDatetime ? `<p><b>Requested slot:</b> ${new Date(proposedDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>` : ""}
+                               <p><b>Reason:</b> ${reason}</p>`,
+                    });
+                }
+                await createInAppNotification({
+                    userId: doctorId,
+                    title: "Reschedule requested",
+                    body: `${s.patient_name || "A patient"} requested reschedule for ${s.therapy || "session"}${proposedDatetime ? " with a proposed new time." : "."}`,
+                    sender: "patient",
+                });
+            } catch (notifyErr) {
+                console.error("rescheduleRequest notification failed:", notifyErr.message);
+            }
+        }
 
         const refreshed = await ref.get();
         res.json({ success: true, session: { id, ...refreshed.data() } });
     } catch (e) {
         console.error("sessions.rescheduleRequest error:", e);
         res.status(500).json({ success: false, error: "Failed to request reschedule" });
+    }
+}
+
+export async function rescheduleReview(req, res) {
+    try {
+        const { id } = req.params;
+        const role = await userRole(req.firebaseUid);
+        const dg = requireDoctor(role);
+        if (!dg.ok) return res.status(dg.code).json({ success: false, error: dg.error });
+
+        const ref = db.collection("sessions").doc(id);
+        const snap = await ref.get();
+        if (!snap.exists) {
+            return res.status(404).json({ success: false, error: "Session not found" });
+        }
+        const s = snap.data();
+        const acc = assertSessionAccess(s, req.firebaseUid, role);
+        if (!acc.ok) return res.status(acc.code).json({ success: false, error: acc.error });
+
+        const action = req.body?.action;
+        if (!["approved", "rejected"].includes(action)) {
+            return res.status(400).json({ success: false, error: "action must be approved or rejected" });
+        }
+        const reviewNote = req.body?.reviewNote || "";
+        const proposed = req.body?.proposedDatetime || s.proposed_datetime || null;
+        const approvedDatetime = action === "approved" && proposed ? new Date(proposed).toISOString() : null;
+        const now = new Date().toISOString();
+
+        const oldDatetime = s.datetime || null;
+        const patch = {
+            reschedule_reviewed_at: now,
+            reschedule_reviewed_by: req.firebaseUid,
+            reschedule_review_note: reviewNote,
+            updated_at: now,
+            proposed_datetime: null,
+        };
+        if (action === "approved") {
+            if (!approvedDatetime) {
+                return res.status(400).json({ success: false, error: "proposedDatetime is required for approval" });
+            }
+            patch.status = "confirmed";
+            patch.datetime = approvedDatetime;
+            patch.reschedule_approved = true;
+            patch.reschedule_rejected = false;
+        } else {
+            patch.status = s.previous_status_before_reschedule || "scheduled";
+            patch.reschedule_approved = false;
+            patch.reschedule_rejected = true;
+        }
+        await ref.update(patch);
+
+        // Keep slot occupancy in sync with approved slot moves.
+        if (action === "approved" && s.practitioner_id) {
+            try {
+                const durationMinutes =
+                    Number(s.duration_minutes ?? s.durationMinutes) ||
+                    (String(s.therapy || "").includes("Vamana") ? 120 : 90);
+                const b = db.batch();
+                if (oldDatetime && oldDatetime !== approvedDatetime) {
+                    slotBlocks.addDeletesForDoctorSlots(
+                        b,
+                        db,
+                        s.practitioner_id,
+                        [oldDatetime],
+                        durationMinutes
+                    );
+                }
+                slotBlocks.addOccupancyWrite(b, db, {
+                    doctorId: s.practitioner_id,
+                    iso: approvedDatetime,
+                    appointmentId: s.appointment_id || null,
+                    sessionId: id,
+                    patientId: s.patient_id || "",
+                    priority: Number(s.totalPriorityScore ?? s.priority) || 50,
+                    therapy: s.therapy || null,
+                    durationMinutes,
+                    status: "confirmed",
+                    updatedAt: now,
+                });
+                await b.commit();
+            } catch (slotErr) {
+                console.error("rescheduleReview slot occupancy sync failed:", slotErr.message);
+            }
+        }
+
+        // Notify patient (email + in-app)
+        let patientEmail = s.patient_email || null;
+        if (!patientEmail && s.patient_id) {
+            try {
+                const pSnap = await db.collection("users").doc(s.patient_id).get();
+                patientEmail = pSnap.exists ? pSnap.data()?.email || pSnap.data()?.patient_email || null : null;
+            } catch (e) {
+                console.error("rescheduleReview patient lookup failed:", e.message);
+            }
+        }
+        if (patientEmail) {
+            try {
+                if (action === "approved") {
+                    await sendEmail({
+                        to: patientEmail,
+                        subject: `Reschedule Approved — ${s.therapy || "Session"}`,
+                        html: `<p>Your reschedule request was approved.</p>
+                               <p><b>New slot:</b> ${new Date(approvedDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>`,
+                    });
+                } else {
+                    await sendEmail({
+                        to: patientEmail,
+                        subject: `Reschedule Request Update — ${s.therapy || "Session"}`,
+                        html: `<p>Your reschedule request could not be approved.</p>
+                               <p><b>Current slot remains:</b> ${new Date(s.datetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>`,
+                    });
+                }
+            } catch (e) {
+                console.error("rescheduleReview patient email failed:", e.message);
+            }
+        }
+        await createInAppNotification({
+            userId: s.patient_id,
+            title: action === "approved" ? "Reschedule approved" : "Reschedule rejected",
+            body:
+                action === "approved"
+                    ? `Your ${s.therapy || "session"} was moved to ${new Date(approvedDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`
+                    : `Your reschedule request for ${s.therapy || "session"} was not approved.`,
+            sender: "doctor",
+        });
+
+        const refreshed = await ref.get();
+        res.json({ success: true, session: { id, ...refreshed.data() } });
+    } catch (e) {
+        console.error("sessions.rescheduleReview error:", e);
+        res.status(500).json({ success: false, error: "Failed to review reschedule request" });
     }
 }
 

@@ -443,6 +443,11 @@ const DoctorDashboard = () => {
   const confirmedCount = sessions.filter(s => s.status === 'confirmed' || s.status === 'scheduled').length;
   const completedCount = sessions.filter(s => s.status === 'completed').length;
   const highPriorityCount = priorityQueue.filter(s => s.computedPriority >= 80).length;
+  const selectedPatientPriority = selectedPatient
+    ? sessions
+        .filter((s) => s.patient_id === selectedPatient.id)
+        .reduce((mx, s) => Math.max(mx, Number(s.totalPriorityScore ?? s.priority) || 0), 0)
+    : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -777,12 +782,12 @@ const DoctorDashboard = () => {
                       <TrendingUp className="w-4 h-4 mr-1 text-accent" />
                       Priority Score
                     </span>
-                    <Badge className={`${getPriorityBadge(selectedPatient.llm_recommendation?.priority_score || 0).className} text-xs font-bold border`}>
-                      {selectedPatient.llm_recommendation?.priority_score || 'N/A'}
+                    <Badge className={`${getPriorityBadge(selectedPatientPriority || 0).className} text-xs font-bold border`}>
+                      {selectedPatientPriority || 'N/A'}
                     </Badge>
                   </div>
                   <Progress
-                    value={selectedPatient.llm_recommendation?.priority_score || 0}
+                    value={selectedPatientPriority || 0}
                     className="h-2"
                   />
                 </div>
