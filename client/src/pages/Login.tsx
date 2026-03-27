@@ -417,7 +417,7 @@ const Login = () => {
                         <CheckCircle2 className="absolute top-2 right-2 w-5 h-5 text-primary" />
                       )}
                       <User className="w-10 h-10 mx-auto mb-3 text-primary" />
-                      <div className="font-semibold text-sm">Patient</div>
+                      <div className="font-semibold text-sm">{t("login.role.patient")}</div>
                       <p className="text-xs text-muted-foreground mt-1">
                         Seek Ayurvedic healing
                       </p>
@@ -434,7 +434,7 @@ const Login = () => {
                         <CheckCircle2 className="absolute top-2 right-2 w-5 h-5 text-primary" />
                       )}
                       <Stethoscope className="w-10 h-10 mx-auto mb-3 text-primary" />
-                      <div className="font-semibold text-sm">Doctor</div>
+                      <div className="font-semibold text-sm">{t("login.role.doctor")}</div>
                       <p className="text-xs text-muted-foreground mt-1">
                         Manage patients & therapies
                       </p>
@@ -451,7 +451,7 @@ const Login = () => {
                         <CheckCircle2 className="absolute top-2 right-2 w-5 h-5 text-primary" />
                       )}
                       <Shield className="w-10 h-10 mx-auto mb-3 text-primary" />
-                      <div className="font-semibold text-sm">Admin</div>
+                      <div className="font-semibold text-sm">{t("login.role.admin")}</div>
                       <p className="text-xs text-muted-foreground mt-1">
                         E-Mart Management
                       </p>
@@ -493,7 +493,7 @@ const Login = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="doctor-code">Verification Code</Label>
+                    <Label htmlFor="doctor-code">{t("login.verificationCode")}</Label>
                     <Input
                       id="doctor-code"
                       type="password"
@@ -565,7 +565,7 @@ const Login = () => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor="signup-age">Age</Label>
+                      <Label htmlFor="signup-age">{t("login.age")}</Label>
                       <Input
                         id="signup-age"
                         type="number"
@@ -577,23 +577,23 @@ const Login = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="signup-gender">Gender</Label>
+                      <Label htmlFor="signup-gender">{t("login.gender")}</Label>
                       <select
                         id="signup-gender"
                         value={gender}
                         onChange={(e) => setGender(e.target.value)}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
-                        <option value="">Select</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
+                        <option value="">{t("login.select")}</option>
+                        <option value="Male">{t("login.male")}</option>
+                        <option value="Female">{t("login.female")}</option>
+                        <option value="Other">{t("login.other")}</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="signup-phone">Phone (optional)</Label>
+                    <Label htmlFor="signup-phone">{t("login.phoneOptional")}</Label>
                     <Input
                       id="signup-phone"
                       type="tel"
@@ -653,7 +653,7 @@ const Login = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="signup-spec">Specialization</Label>
+                        <Label htmlFor="signup-spec">{t("login.specialization")}</Label>
                         <Input
                           id="signup-spec"
                           placeholder="Panchakarma, Ayurvedic Medicine..."

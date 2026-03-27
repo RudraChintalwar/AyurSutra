@@ -28,18 +28,19 @@ import {
   Filter
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: string, t: (key: string) => string) => {
   switch (status) {
-    case 'pending_review': return { label: '🟡 Pending Review', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
-    case 'confirmed': return { label: '✅ Confirmed', className: 'bg-green-100 text-green-700 border-green-200' };
-    case 'scheduled': return { label: '📅 Scheduled', className: 'bg-blue-100 text-blue-700 border-blue-200' };
-    case 'completed': return { label: '✅ Completed', className: 'bg-green-100 text-green-700 border-green-200' };
-    case 'rejected': return { label: '❌ Rejected', className: 'bg-red-100 text-red-700 border-red-200' };
-    case 'bumped': return { label: '⚡ Rescheduled', className: 'bg-purple-100 text-purple-700 border-purple-200' };
-    case 'reschedule_requested': return { label: '⚠️ Reschedule Req', className: 'bg-orange-100 text-orange-700 border-orange-200' };
-    case 'cancelled': return { label: '❌ Cancelled', className: 'bg-red-100 text-red-700 border-red-200' };
-    default: return { label: status || 'Unknown', className: 'bg-gray-100 text-gray-700 border-gray-200' };
+    case 'pending_review': return { label: `🟡 ${t("sessions.pendingReview")}`, className: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+    case 'confirmed': return { label: `✅ ${t("sessions.confirmed")}`, className: 'bg-green-100 text-green-700 border-green-200' };
+    case 'scheduled': return { label: `📅 ${t("sessions.statusScheduled")}`, className: 'bg-blue-100 text-blue-700 border-blue-200' };
+    case 'completed': return { label: `✅ ${t("sessions.statusCompleted")}`, className: 'bg-green-100 text-green-700 border-green-200' };
+    case 'rejected': return { label: `❌ ${t("sessions.rejected")}`, className: 'bg-red-100 text-red-700 border-red-200' };
+    case 'bumped': return { label: `⚡ ${t("sessions.rescheduled")}`, className: 'bg-purple-100 text-purple-700 border-purple-200' };
+    case 'reschedule_requested': return { label: `⚠️ ${t("sessions.rescheduleReq")}`, className: 'bg-orange-100 text-orange-700 border-orange-200' };
+    case 'cancelled': return { label: `❌ ${t("common.cancelled")}`, className: 'bg-red-100 text-red-700 border-red-200' };
+    default: return { label: status || t("common.unknown"), className: 'bg-gray-100 text-gray-700 border-gray-200' };
   }
 };
 
@@ -54,6 +55,7 @@ const PatientSessions = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { t, language } = useLanguage();
 
   React.useEffect(() => {
     const fetchSessions = async () => {
@@ -82,8 +84,8 @@ const PatientSessions = () => {
   const handleAISchedulingComplete = async (sessionData: any) => {
     try {
       toast({
-        title: "Sessions Submitted for Review 📋",
-        description: `${sessionData?.scheduledSlots?.length || 0} ${sessionData?.recommendation?.therapy || 'therapy'} sessions are pending doctor approval.`
+        title: language === "hi" ? "सत्र समीक्षा हेतु भेजे गए 📋" : "Sessions Submitted for Review 📋",
+        description: `${sessionData?.scheduledSlots?.length || 0} ${sessionData?.recommendation?.therapy || t("sessions.therapy")} ${t("sessions.pendingDoctorApproval")}`
       });
       // Refresh sessions from Firestore
       const q = query(collection(db, 'sessions'), where('patient_id', '==', user?.uid));
@@ -93,7 +95,7 @@ const PatientSessions = () => {
       setSessions(data);
     } catch (err) {
       console.error('Error refreshing sessions:', err);
-      toast({ title: "Error", description: "Failed to refresh sessions.", variant: "destructive" });
+      toast({ title: language === "hi" ? "त्रुटि" : "Error", description: language === "hi" ? "सत्र रिफ्रेश नहीं हो सके।" : "Failed to refresh sessions.", variant: "destructive" });
     }
   };
 
@@ -113,8 +115,8 @@ const PatientSessions = () => {
   const formatDateTime = (dateTime: string) => {
     if (!dateTime) return 'TBD';
     const date = new Date(dateTime);
-    if (isNaN(date.getTime())) return 'Invalid Date';
-    return date.toLocaleString('en-IN', {
+    if (isNaN(date.getTime())) return t("common.invalidDate");
+    return date.toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -139,16 +141,16 @@ const PatientSessions = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            My Treatment Sessions
+            {t("sessions.title")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Track your Panchakarma journey and upcoming appointments
+            {t("sessions.subtitle")}
           </p>
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" onClick={() => setShowAIWizard(true)}>
             <Activity className="w-4 h-4 mr-2" />
-            AI Smart Schedule
+            {t("sessions.aiSchedule")}
           </Button>
         </div>
       </div>
@@ -163,8 +165,8 @@ const PatientSessions = () => {
               </div>
               <div className="absolute inset-0 rounded-full border-4 border-primary border-r-transparent animate-spin-slow"></div>
             </div>
-            <div className="font-medium">Treatment Progress</div>
-            <div className="text-sm text-muted-foreground">Overall Recovery</div>
+            <div className="font-medium">{t("sessions.progress")}</div>
+            <div className="text-sm text-muted-foreground">{t("sessions.overallRecovery")}</div>
           </div>
 
           <div className="text-center">
@@ -172,8 +174,8 @@ const PatientSessions = () => {
               <Calendar className="w-8 h-8 text-primary" />
             </div>
             <div className="text-2xl font-bold text-primary">{sessions.length}</div>
-            <div className="font-medium">Total Sessions</div>
-            <div className="text-sm text-muted-foreground">Scheduled & Completed</div>
+            <div className="font-medium">{t("sessions.totalSessions")}</div>
+            <div className="text-sm text-muted-foreground">{t("sessions.scheduledCompleted")}</div>
           </div>
 
           <div className="text-center">
@@ -181,8 +183,8 @@ const PatientSessions = () => {
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
             <div className="text-2xl font-bold text-green-600">{completedSessions.length}</div>
-            <div className="font-medium">Completed</div>
-            <div className="text-sm text-muted-foreground">Successfully Finished</div>
+            <div className="font-medium">{t("sessions.statusCompleted")}</div>
+            <div className="text-sm text-muted-foreground">{t("sessions.successfullyFinished")}</div>
           </div>
 
           <div className="text-center">
@@ -190,15 +192,15 @@ const PatientSessions = () => {
               <Clock className="w-8 h-8 text-accent" />
             </div>
             <div className="text-2xl font-bold text-accent">{upcomingSessions.length}</div>
-            <div className="font-medium">Upcoming</div>
-            <div className="text-sm text-muted-foreground">Next Appointments</div>
+            <div className="font-medium">{t("sessions.upcoming")}</div>
+            <div className="text-sm text-muted-foreground">{t("sessions.nextAppointments")}</div>
           </div>
         </div>
 
         {/* Progress Bar */}
         <div className="mt-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Treatment Plan Progress</span>
+            <span className="text-sm font-medium">{t("sessions.planProgress")}</span>
             <span className="text-sm text-muted-foreground">
               {completedSessions.length} of {currentPatient?.llm_recommendation?.sessions_recommended || 0} sessions
             </span>
@@ -210,20 +212,20 @@ const PatientSessions = () => {
       {/* Sessions List */}
       <Card className="ayur-card p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="font-playfair text-xl font-semibold">Session History</h3>
+          <h3 className="font-playfair text-xl font-semibold">{t("sessions.history")}</h3>
           <div className="flex items-center space-x-2">
             <Button variant="outline" size="sm" onClick={() => setShowFilterModal(true)}>
               <Filter className="w-4 h-4 mr-2" />
-              Filter
+              {t("sessions.filter")}
             </Button>
           </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
-            <TabsTrigger value="all">All Sessions</TabsTrigger>
+            <TabsTrigger value="upcoming">{t("sessions.upcoming")}</TabsTrigger>
+            <TabsTrigger value="completed">{t("patient.completed")}</TabsTrigger>
+            <TabsTrigger value="all">{t("sessions.allSessions")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="upcoming" className="space-y-4">
@@ -259,13 +261,13 @@ const PatientSessions = () => {
                           {session.status === 'bumped' && (
                             <Badge className="bg-red-100 text-red-700 border-red-200 ml-2 text-xs font-semibold animate-pulse">
                               <AlertCircle className="w-3 h-3 mr-1" />
-                              Emergency Rescheduled by Doctor
+                              {t("sessions.emergencyRescheduledByDoctor")}
                             </Badge>
                           )}
                           {session.status === 'confirmed' && (
                             <Badge className="bg-green-100 text-green-700 border-green-200 ml-2 text-xs">
                               <CheckCircle className="w-3 h-3 mr-1" />
-                              Confirmed by Practitioner
+                              {t("sessions.confirmedByPractitioner")}
                             </Badge>
                           )}
                         </div>
@@ -273,10 +275,10 @@ const PatientSessions = () => {
                     </div>
                     <div className="text-right">
                       <Badge className="bg-blue-100 text-blue-700 border-blue-200 mb-2">
-                        Scheduled
+                        {t("sessions.statusScheduled")}
                       </Badge>
                       <div className="text-sm text-muted-foreground">
-                        Click for details
+                        {t("sessions.clickForDetails")}
                       </div>
                     </div>
                   </div>
@@ -285,11 +287,11 @@ const PatientSessions = () => {
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Upcoming Sessions</h3>
-                <p className="text-sm mb-4">Schedule your next treatment session</p>
+                <h3 className="text-lg font-medium mb-2">{t("sessions.noUpcoming")}</h3>
+                <p className="text-sm mb-4">{t("sessions.scheduleNext")}</p>
                 <Button className="ayur-button-hero" onClick={handleBookSession}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Book Session
+                  {t("sessions.bookSession")}
                 </Button>
               </div>
             )}
@@ -336,7 +338,7 @@ const PatientSessions = () => {
                     </div>
                     <div className="text-right">
                       <Badge className="bg-green-100 text-green-700 border-green-200 mb-2">
-                        Completed
+                        {t("sessions.statusCompleted")}
                       </Badge>
                       {session.feedback && (
                         <div className="text-sm text-muted-foreground">
@@ -350,8 +352,8 @@ const PatientSessions = () => {
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 <Activity className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Completed Sessions</h3>
-                <p className="text-sm">Your completed treatments will appear here</p>
+                <h3 className="text-lg font-medium mb-2">{t("sessions.noCompleted")}</h3>
+                <p className="text-sm">{language === "hi" ? "आपके पूर्ण उपचार यहां दिखेंगे" : "Your completed treatments will appear here"}</p>
               </div>
             )}
           </TabsContent>
@@ -403,8 +405,8 @@ const PatientSessions = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <Badge className={`${getStatusBadge(session.status).className} border`}>
-                        {getStatusBadge(session.status).label}
+                      <Badge className={`${getStatusBadge(session.status, t).className} border`}>
+                        {getStatusBadge(session.status, t).label}
                       </Badge>
                     </div>
                   </div>
@@ -427,7 +429,7 @@ const PatientSessions = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h4 className="font-semibold text-lg text-primary">
-                  {currentPatient?.llm_recommendation?.therapy || "Pending Assessment"}
+                  {currentPatient?.llm_recommendation?.therapy || t("sessions.pendingAssessment")}
                 </h4>
                 <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                   <span>Recommended: {currentPatient?.llm_recommendation?.sessions_recommended || 0} sessions</span>
@@ -454,7 +456,7 @@ const PatientSessions = () => {
                 <div className="text-xl font-bold text-green-600">
                   {completedSessions.length}
                 </div>
-                <div className="text-xs text-muted-foreground">Completed</div>
+                <div className="text-xs text-muted-foreground">{t("sessions.statusCompleted")}</div>
               </div>
               <div className="text-center p-3 bg-background/50 rounded-lg">
                 <div className="text-xl font-bold text-accent">

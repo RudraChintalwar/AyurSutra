@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Notification {
   id: string;
@@ -32,6 +33,7 @@ interface Notification {
 
 const Messages = () => {
   const { user, role } = useAuth();
+  const { t, language } = useLanguage();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
@@ -48,7 +50,7 @@ const Messages = () => {
           const data = doc.data();
           return {
             id: doc.id,
-            title: `Session ${data.status === 'scheduled' ? 'Scheduled' : 'Completed'}: ${data.therapy || 'Panchakarma'}`,
+          title: `Session ${data.status === 'scheduled' ? (language === "hi" ? 'निर्धारित' : 'Scheduled') : (language === "hi" ? 'पूर्ण' : 'Completed')}: ${data.therapy || 'Panchakarma'}`,
             body: `Your ${data.therapy || 'therapy'} session is ${data.status}. Duration: ${data.duration_minutes || 60} minutes.`,
             channel: 'in-app',
             datetime: data.datetime || new Date().toISOString(),
@@ -60,8 +62,8 @@ const Messages = () => {
         // Add a welcome notification
         generatedNotifications.unshift({
           id: 'welcome',
-          title: 'Welcome to AyurSutra',
-          body: 'Your account has been set up. Explore your dashboard to get started with your Ayurvedic wellness journey!',
+          title: language === "hi" ? 'AyurSutra में आपका स्वागत है' : 'Welcome to AyurSutra',
+          body: language === "hi" ? 'आपका खाता सेट हो गया है। अपनी आयुर्वेदिक वेलनेस यात्रा शुरू करने के लिए डैशबोर्ड देखें।' : 'Your account has been set up. Explore your dashboard to get started with your Ayurvedic wellness journey!',
           channel: 'in-app',
           datetime: new Date().toISOString(),
           read: false,
@@ -97,15 +99,15 @@ const Messages = () => {
 
   const getSenderLabel = (sender?: string) => {
     switch (sender) {
-      case 'doctor': return 'Doctor';
-      case 'llm': return 'AI Assistant';
-      case 'system': return 'System';
-      default: return 'Notification';
+      case 'doctor': return language === "hi" ? 'डॉक्टर' : 'Doctor';
+      case 'llm': return language === "hi" ? 'AI सहायक' : 'AI Assistant';
+      case 'system': return language === "hi" ? 'सिस्टम' : 'System';
+      default: return language === "hi" ? 'सूचना' : 'Notification';
     }
   };
 
   const formatDateTime = (dateTime: string) => {
-    return new Date(dateTime).toLocaleString('en-IN', {
+    return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
@@ -115,19 +117,19 @@ const Messages = () => {
   };
 
   const getPatientName = (patientId: string) => {
-    return patientId?.slice(0, 8) || 'Unknown Patient';
+    return patientId?.slice(0, 8) || (language === "hi" ? 'अज्ञात रोगी' : 'Unknown Patient');
   };
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="font-playfair text-3xl font-bold text-primary mb-2">
-          {role === 'patient' ? 'My Messages' : 'Patient Notifications'}
+          {role === 'patient' ? t('messages.title.patient') : t('messages.title.doctor')}
         </h1>
         <p className="text-muted-foreground">
           {role === 'patient' 
-            ? 'Stay updated with your treatment plan and appointments' 
-            : 'Monitor all patient communications and automated notifications'
+            ? t('messages.subtitle.patient')
+            : t('messages.subtitle.doctor')
           }
         </p>
       </div>
@@ -137,17 +139,17 @@ const Messages = () => {
         <div className="lg:col-span-1">
           <Card className="ayur-card p-4 h-fit">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-playfair text-lg font-semibold">Notifications</h3>
+              <h3 className="font-playfair text-lg font-semibold">{t('messages.notifications')}</h3>
               <Badge variant="secondary">
-                {notifications.filter(n => !n.read).length} unread
+                {t('messages.unreadCount', { count: notifications.filter(n => !n.read).length })}
               </Badge>
             </div>
 
             <Tabs defaultValue="all" className="w-full">
               <TabsList className="grid grid-cols-3 w-full mb-4">
-                <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
-                <TabsTrigger value="unread" className="text-xs">Unread</TabsTrigger>
-                <TabsTrigger value="important" className="text-xs">High Priority</TabsTrigger>
+                <TabsTrigger value="all" className="text-xs">{t('sessions.allSessions')}</TabsTrigger>
+                <TabsTrigger value="unread" className="text-xs">{t('messages.unread')}</TabsTrigger>
+                <TabsTrigger value="important" className="text-xs">{t('messages.highPriority')}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="all" className="space-y-2">
@@ -186,7 +188,7 @@ const Messages = () => {
 
                     {role === 'doctor' && (
                       <div className="text-xs text-muted-foreground mb-2">
-                        Patient: {getPatientName(notification.patient_id)}
+                        {t('messages.patient')}: {getPatientName(notification.patient_id)}
                       </div>
                     )}
 
@@ -197,7 +199,7 @@ const Messages = () => {
                     {!notification.read && (
                       <div className="flex items-center justify-end mt-2">
                         <Badge variant="secondary" className="text-xs">
-                          New
+                          {t('messages.new')}
                         </Badge>
                       </div>
                     )}
@@ -218,7 +220,7 @@ const Messages = () => {
                         {getChannelIcon(notification.channel)}
                         {role === 'doctor' && getSenderIcon(notification.sender)}
                       </div>
-                      <Badge variant="secondary" className="text-xs">New</Badge>
+                      <Badge variant="secondary" className="text-xs">{t('messages.new')}</Badge>
                     </div>
                     <h4 className="font-medium text-sm">{notification.title}</h4>
                     <p className="text-xs text-muted-foreground mt-1">{notification.body}</p>
@@ -229,7 +231,7 @@ const Messages = () => {
               <TabsContent value="important" className="space-y-2">
                 <div className="text-center text-muted-foreground py-8">
                   <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No high priority notifications</p>
+                  <p className="text-sm">{t('messages.noHighPriority')}</p>
                 </div>
               </TabsContent>
             </Tabs>
@@ -265,7 +267,7 @@ const Messages = () => {
                     </div>
                   </div>
                   {!selectedNotification.read && (
-                    <Badge className="animate-pulse-gentle">Unread</Badge>
+                    <Badge className="animate-pulse-gentle">{t('messages.unread')}</Badge>
                   )}
                 </div>
 
@@ -354,7 +356,7 @@ const Messages = () => {
             ) : (
               <div className="text-center text-muted-foreground py-12">
                 <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Select a notification to view details</p>
+                <p>{t("messages.noSelection")}</p>
               </div>
             )}
           </Card>

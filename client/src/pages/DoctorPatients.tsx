@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useDoctorData, Patient } from '@/hooks/useDoctorData';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const DoctorPatients = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +40,7 @@ const DoctorPatients = () => {
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t, language } = useLanguage();
   const { patients, sessions, loading } = useDoctorData();
 
   const getDoshaBadge = (dosha: string) => {
@@ -92,15 +94,15 @@ const DoctorPatients = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Patient Management
+            {t("doctorPatients.title")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage your patients and their treatment plans
+            {t("doctorPatients.subtitle")}
           </p>
         </div>
         <Button className="ayur-button-accent" onClick={() => setShowRegistrationModal(true)}>
           <Plus className="w-4 h-4 mr-2" />
-          Add New Patient
+          {t("doctorPatients.addNew")}
         </Button>
       </div>
 
@@ -119,7 +121,7 @@ const DoctorPatients = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-primary">{patients.length}</div>
-              <div className="text-sm text-muted-foreground">Total Patients</div>
+              <div className="text-sm text-muted-foreground">{t("doctorPatients.totalPatients")}</div>
             </div>
           </div>
         </Card>
@@ -133,7 +135,7 @@ const DoctorPatients = () => {
               <div className="text-2xl font-bold text-red-600">
                 {patients.filter(p => (p.llm_recommendation?.priority_score || 0) >= 80).length}
               </div>
-              <div className="text-sm text-muted-foreground">High Priority</div>
+              <div className="text-sm text-muted-foreground">{t("messages.highPriority")}</div>
             </div>
           </div>
         </Card>
@@ -147,7 +149,7 @@ const DoctorPatients = () => {
               <div className="text-2xl font-bold text-green-600">
                 {sessions.filter(s => s.status === 'scheduled').length}
               </div>
-              <div className="text-sm text-muted-foreground">Active Sessions</div>
+              <div className="text-sm text-muted-foreground">{t("doctorPatients.activeSessions")}</div>
             </div>
           </div>
         </Card>
@@ -159,7 +161,7 @@ const DoctorPatients = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-accent">85%</div>
-              <div className="text-sm text-muted-foreground">Recovery Rate</div>
+              <div className="text-sm text-muted-foreground">{t("doctorPatients.recoveryRate")}</div>
             </div>
           </div>
         </Card>
@@ -170,12 +172,12 @@ const DoctorPatients = () => {
         <div className="lg:col-span-2">
           <Card className="ayur-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-playfair text-xl font-semibold">Patient List</h3>
+              <h3 className="font-playfair text-xl font-semibold">{t("doctorPatients.patientList")}</h3>
               <div className="flex items-center space-x-2">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search patients..."
+                    placeholder={t("doctorPatients.searchPatients")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 w-64"
@@ -189,9 +191,9 @@ const DoctorPatients = () => {
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="all">All Patients</TabsTrigger>
-                <TabsTrigger value="high-priority">High Priority</TabsTrigger>
-                <TabsTrigger value="recent">Recent Activity</TabsTrigger>
+                <TabsTrigger value="all">{t("doctorPatients.allPatients")}</TabsTrigger>
+                <TabsTrigger value="high-priority">{t("messages.highPriority")}</TabsTrigger>
+                <TabsTrigger value="recent">{t("doctorPatients.recentActivity")}</TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -253,7 +255,7 @@ const DoctorPatients = () => {
           <Card className="ayur-card p-6 sticky top-6">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <User className="w-5 h-5 mr-2 text-primary" />
-              Patient Details
+              {t("doctorPatients.patientDetails")}
             </h3>
             
             {selectedPatient ? (
@@ -267,13 +269,13 @@ const DoctorPatients = () => {
                   </Avatar>
                   <h4 className="font-semibold text-lg">{selectedPatient.name}</h4>
                   <Badge className={`${getDoshaBadge(selectedPatient.dosha || '')} text-xs mt-1`}>
-                    {selectedPatient.dosha || 'Unknown'} Constitution
+                    {selectedPatient.dosha || 'Unknown'} {language === "hi" ? 'प्रकृति' : 'Constitution'}
                   </Badge>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground">Contact Information</div>
+                    <div className="text-sm font-medium text-muted-foreground">{t("doctorPatients.contactInfo")}</div>
                     <div className="text-sm mt-1">
                       <div className="flex items-center">
                         <Phone className="w-3 h-3 mr-2" />
@@ -287,12 +289,12 @@ const DoctorPatients = () => {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground">Chief Complaint</div>
+                    <div className="text-sm font-medium text-muted-foreground">{t("doctorPatients.chiefComplaint")}</div>
                     <div className="text-sm mt-1">{selectedPatient.reason_for_visit || 'No reason specified'}</div>
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-2">Current Symptoms</div>
+                    <div className="text-sm font-medium text-muted-foreground mb-2">{t("doctorPatients.currentSymptoms")}</div>
                     {selectedPatient.symptoms?.map((symptom: any, index: number) => (
                       <div key={index} className="flex justify-between items-center text-sm mb-1">
                         <span>{symptom.name}</span>
@@ -306,11 +308,11 @@ const DoctorPatients = () => {
                           <span className="font-medium w-8">{symptom.score}/10</span>
                         </div>
                       </div>
-                    )) || <div className="text-sm text-muted-foreground">No symptoms recorded</div>}
+                    )) || <div className="text-sm text-muted-foreground">{t("doctorPatients.noSymptoms")}</div>}
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-2">Treatment Plan</div>
+                    <div className="text-sm font-medium text-muted-foreground mb-2">{t("doctorPatients.treatmentPlan")}</div>
                     <div className="p-3 bg-primary/5 rounded-lg">
                       <div className="text-sm font-medium text-primary">
                         {selectedPatient.llm_recommendation?.therapy || 'No therapy prescribed'}
@@ -329,23 +331,23 @@ const DoctorPatients = () => {
                 <div className="grid grid-cols-2 gap-2 pt-4 border-t">
                   <Button size="sm" className="ayur-button-hero" onClick={() => selectedPatient && handleScheduleSession(selectedPatient)}>
                     <Calendar className="w-4 h-4 mr-1" />
-                    Schedule
+                    {t("doctorPatients.schedule")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => selectedPatient && handleViewRecords(selectedPatient)}>
                     <Star className="w-4 h-4 mr-1" />
-                    Records
+                    {t("doctorPatients.records")}
                   </Button>
                 </div>
                 
                 <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => selectedPatient && handleMessagePatient(selectedPatient)}>
                   <MessageSquare className="w-4 h-4 mr-1" />
-                  Send Message
+                  {language === "hi" ? "संदेश भेजें" : "Send Message"}
                 </Button>
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Select a patient to view details</p>
+                <p>{t("doctorPatients.selectPatient")}</p>
               </div>
             )}
           </Card>

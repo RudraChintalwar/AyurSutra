@@ -434,8 +434,8 @@ const PatientDashboard = () => {
           ) : (
             <div className="text-center py-6 text-muted-foreground">
               <Calendar className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No upcoming therapy events</p>
-              <p className="text-xs mt-1">Sessions will sync to your Google Calendar</p>
+              <p className="text-sm">{t("patientDashboard.noUpcomingTherapy")}</p>
+              <p className="text-xs mt-1">{t("patientDashboard.syncCalendarHint")}</p>
             </div>
           )}
         </Card>
@@ -463,10 +463,10 @@ const PatientDashboard = () => {
                 </div>
               ))
             ) : (
-              <div className="text-sm text-muted-foreground py-4">No symptoms reported yet. Complete the Dosha Quiz to update your health profile.</div>
+              <div className="text-sm text-muted-foreground py-4">{t("patientDashboard.noSymptomsYet")}</div>
             )}
             <div className="mt-4 p-3 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg">
-              <div className="text-sm font-medium text-primary mb-1">Overall Progress</div>
+              <div className="text-sm font-medium text-primary mb-1">{t("patientDashboard.overallProgress")}</div>
               <div className="text-xs text-muted-foreground">
                 {completedSessions.length > 0
                   ? `${completedSessions.length} session${completedSessions.length > 1 ? 's' : ''} completed. ${upcomingSessions.length > 0 ? `${upcomingSessions.length} upcoming.` : 'Schedule your next session to continue your treatment plan.'}`
@@ -509,19 +509,19 @@ const PatientDashboard = () => {
                   <div className="text-xl font-bold text-primary">
                     {currentPatient.llm_recommendation.sessions_recommended}
                   </div>
-                  <div className="text-xs text-muted-foreground">Recommended Sessions</div>
+                  <div className="text-xs text-muted-foreground">{t("patientDashboard.recommendedSessions")}</div>
                 </div>
                 <div>
                   <div className="text-xl font-bold text-accent">
                     {completedSessions.length}
                   </div>
-                  <div className="text-xs text-muted-foreground">Completed</div>
+                  <div className="text-xs text-muted-foreground">{t("patient.completed")}</div>
                 </div>
                 <div>
                   <div className="text-xl font-bold text-ayur-soft-gold">
                     {Math.round((completedSessions.length / currentPatient.llm_recommendation.sessions_recommended) * 100)}%
                   </div>
-                  <div className="text-xs text-muted-foreground">Progress</div>
+                  <div className="text-xs text-muted-foreground">{t("patientDashboard.progress")}</div>
                 </div>
               </div>
             </div>
@@ -573,8 +573,8 @@ const PatientDashboard = () => {
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No completed sessions yet</p>
-                <p className="text-xs mt-1">Your session history will appear here</p>
+                <p>{t("patientDashboard.noCompletedSessions")}</p>
+                <p className="text-xs mt-1">{t("patientDashboard.historyWillAppear")}</p>
               </div>
             )}
             
@@ -588,14 +588,14 @@ const PatientDashboard = () => {
       </div>
 
       {/* Quick Actions & Ayurvedic Features */}
-      <h3 className="font-playfair text-xl font-semibold mt-8 mb-4">Ayurvedic Ecosystem</h3>
+      <h3 className="font-playfair text-xl font-semibold mt-8 mb-4">{t("patientDashboard.ecosystem")}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Button className="h-24 justify-start p-4 hover:scale-105 transition-transform border-primary/20 hover:border-primary/50" variant="outline" onClick={() => navigate('/ayurvedic-mart')}>
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">🛒</span>
             <div className="text-left w-full">
-              <div className="font-semibold text-primary text-sm">Ayurvedic Mart</div>
-              <div className="text-xs text-muted-foreground truncate">Authentic herbs</div>
+              <div className="font-semibold text-primary text-sm">{t("patientDashboard.ayurvedicMart")}</div>
+              <div className="text-xs text-muted-foreground truncate">{t("patientDashboard.authenticHerbs")}</div>
             </div>
           </div>
         </Button>
@@ -604,8 +604,8 @@ const PatientDashboard = () => {
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">📄</span>
             <div className="text-left w-full">
-              <div className="font-semibold text-primary text-sm">Report Analyzer</div>
-              <div className="text-xs text-muted-foreground truncate">AI Insights</div>
+              <div className="font-semibold text-primary text-sm">{t("patientDashboard.reportAnalyzer")}</div>
+              <div className="text-xs text-muted-foreground truncate">{t("patientDashboard.aiInsights")}</div>
             </div>
           </div>
         </Button>
@@ -614,8 +614,8 @@ const PatientDashboard = () => {
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">🥗</span>
             <div className="text-left w-full">
-              <div className="font-semibold text-primary text-sm">Diet Planner</div>
-              <div className="text-xs text-muted-foreground truncate">Dosha nutrition</div>
+              <div className="font-semibold text-primary text-sm">{t("patientDashboard.dietPlanner")}</div>
+              <div className="text-xs text-muted-foreground truncate">{t("patientDashboard.doshaNutrition")}</div>
             </div>
           </div>
         </Button>
@@ -624,8 +624,8 @@ const PatientDashboard = () => {
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">🫀</span>
             <div className="text-left w-full">
-              <div className="font-semibold text-primary text-sm">BPM Checker</div>
-              <div className="text-xs text-muted-foreground truncate">Heart rate monitor</div>
+              <div className="font-semibold text-primary text-sm">{t("patientDashboard.bpmChecker")}</div>
+              <div className="text-xs text-muted-foreground truncate">{t("patientDashboard.heartRateMonitor")}</div>
             </div>
           </div>
         </Button>
@@ -634,8 +634,8 @@ const PatientDashboard = () => {
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">🌿</span>
             <div className="text-left w-full">
-              <div className="font-semibold text-primary text-sm">Herbal Remedies</div>
-              <div className="text-xs text-muted-foreground truncate">Natural healing</div>
+              <div className="font-semibold text-primary text-sm">{t("patientDashboard.herbalRemedies")}</div>
+              <div className="text-xs text-muted-foreground truncate">{t("patientDashboard.naturalHealing")}</div>
             </div>
           </div>
         </Button>

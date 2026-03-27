@@ -201,7 +201,7 @@ const DoctorCalendar = () => {
         <div className="lg:col-span-1">
           <Card className="ayur-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-playfair text-xl font-semibold">Calendar</h3>
+              <h3 className="font-playfair text-xl font-semibold">{t("common.calendar")}</h3>
               <div className="flex items-center space-x-2">
                 <Button 
                   variant="outline" 
@@ -225,22 +225,22 @@ const DoctorCalendar = () => {
             </div>
 
             <div className="mt-4 space-y-2">
-              <div className="text-sm font-medium text-muted-foreground">Legend</div>
+              <div className="text-sm font-medium text-muted-foreground">{t("common.legend")}</div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <span>Pending/Confirmed/Scheduled</span>
+                <span>{language === "hi" ? "लंबित/पुष्ट/निर्धारित" : "Pending/Confirmed/Scheduled"}</span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-green-600 rounded-full"></div>
-                <span>Completed</span>
+                <span>{t("patient.completed")}</span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-                <span>Reschedule Required</span>
+                <span>{language === "hi" ? "रीशेड्यूल आवश्यक" : "Reschedule Required"}</span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                <span>Reschedule Requested</span>
+                <span>{language === "hi" ? "रीशेड्यूल अनुरोध" : "Reschedule Requested"}</span>
               </div>
             </div>
           </Card>
@@ -252,7 +252,7 @@ const DoctorCalendar = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-playfair text-xl font-semibold">
                 {selectedDate.toDateString() === new Date().toDateString() 
-                  ? "Today's Schedule" 
+                  ? t("common.todaySchedule")
                   : `Schedule for ${formatDate(selectedDate.toISOString())}`}
               </h3>
               <div className="flex items-center space-x-1">
@@ -319,7 +319,7 @@ const DoctorCalendar = () => {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <CalendarIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No sessions scheduled</p>
+                <p>{t("common.noSessionsScheduled")}</p>
                   <Button 
                     variant="outline" 
                     size="sm" 
@@ -406,7 +406,7 @@ const DoctorCalendar = () => {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
               </svg>
-              Google Calendar Events
+              {t("doctorCalendar.eventsTitle")}
             </h3>
 
             {calendarLoading ? (
@@ -439,7 +439,7 @@ const DoctorCalendar = () => {
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 hover:underline shrink-0"
                         >
-                          View in Calendar →
+                          {t("doctorCalendar.viewInCalendar")} →
                         </a>
                       )}
                     </div>
@@ -449,8 +449,8 @@ const DoctorCalendar = () => {
             ) : (
               <div className="text-center py-6 text-muted-foreground">
                 <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No upcoming AyurSutra events on your Google Calendar</p>
-                <p className="text-xs mt-1">Events will appear here when sessions are booked</p>
+                <p className="text-sm">{t("doctorCalendar.noUpcomingEvents")}</p>
+                <p className="text-xs mt-1">{t("doctorCalendar.eventsAppearHint")}</p>
               </div>
             )}
           </Card>
@@ -460,7 +460,7 @@ const DoctorCalendar = () => {
       {/* Time Slot View */}
       <Card className="ayur-card p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="font-playfair text-xl font-semibold">Daily Timeline</h3>
+          <h3 className="font-playfair text-xl font-semibold">{t("doctorCalendar.dailyTimeline")}</h3>
           <div className="flex items-center space-x-2">
             <Button 
               variant={viewMode === 'week' ? 'default' : 'outline'} 

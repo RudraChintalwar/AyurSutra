@@ -12,6 +12,7 @@ import {
   User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FilterOption {
   label: string;
@@ -47,6 +48,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
   className,
   showQuickActions = false
 }) => {
+  const { t } = useLanguage();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const activeFilterCount = Object.keys(activeFilters).filter(key => activeFilters[key]).length;
@@ -105,7 +107,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
           className="flex items-center space-x-2"
         >
           <Filter className="w-4 h-4" />
-          <span>Filters</span>
+          <span>{t("filters.filters")}</span>
           {activeFilterCount > 0 && (
             <Badge variant="secondary" className="ml-1">
               {activeFilterCount}
@@ -118,11 +120,11 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
           <div className="flex space-x-2">
             <Button variant="outline" size="sm">
               <Calendar className="w-4 h-4 mr-1" />
-              Today
+              {t("common.today")}
             </Button>
             <Button variant="outline" size="sm">
               <Clock className="w-4 h-4 mr-1" />
-              Recent
+              {t("common.recent")}
             </Button>
           </div>
         )}
@@ -131,7 +133,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
       {/* Active Filters Display */}
       {activeFilterCount > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">Active filters:</span>
+          <span className="text-sm text-muted-foreground">{t("filters.activeFilters")}</span>
           {Object.entries(activeFilters).map(([type, value]) => 
             value ? (
               <Badge 
@@ -155,7 +157,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             onClick={onClearFilters}
             className="text-xs"
           >
-            Clear all
+            {t("filters.clearAll")}
           </Button>
         </div>
       )}
@@ -167,28 +169,28 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             {filters.status && renderFilterSelect(
               'status', 
               filters.status, 
-              'Status', 
+              t("filters.status"), 
               <Clock className="w-4 h-4" />
             )}
             
             {filters.therapy && renderFilterSelect(
               'therapy', 
               filters.therapy, 
-              'Therapy', 
+              t("filters.therapy"), 
               <User className="w-4 h-4" />
             )}
             
             {filters.priority && renderFilterSelect(
               'priority', 
               filters.priority, 
-              'Priority', 
+              t("filters.priority"), 
               <Filter className="w-4 h-4" />
             )}
             
             {filters.dateRange && renderFilterSelect(
               'dateRange', 
               filters.dateRange, 
-              'Date Range', 
+              t("filters.dateRange"), 
               <Calendar className="w-4 h-4" />
             )}
           </div>
@@ -199,13 +201,13 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               onClick={onClearFilters}
               disabled={activeFilterCount === 0}
             >
-              Clear Filters
+              {t("filters.clearFilters")}
             </Button>
             <Button
               onClick={() => setIsFilterOpen(false)}
               className="ayur-button-hero"
             >
-              Apply Filters
+              {t("filters.applyFilters")}
             </Button>
           </div>
         </div>

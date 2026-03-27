@@ -182,7 +182,7 @@ const PatientSettings = () => {
           <TabsTrigger value="profile">{t('doctor.profile')}</TabsTrigger>
           <TabsTrigger value="notifications">{t('doctor.notifications')}</TabsTrigger>
           <TabsTrigger value="calendar">{t('doctor.calendar')}</TabsTrigger>
-          <TabsTrigger value="privacy">Privacy</TabsTrigger>
+          <TabsTrigger value="privacy">{t('common.privacy')}</TabsTrigger>
           <TabsTrigger value="preferences">{t('doctor.preferences')}</TabsTrigger>
         </TabsList>
 
@@ -203,14 +203,14 @@ const PatientSettings = () => {
               </div>
               <div className="flex-1">
                 <h3 className="font-playfair text-2xl font-semibold">{profileData.name}</h3>
-                <p className="text-muted-foreground">Patient ID: {user?.uid?.slice(0, 8) || 'N/A'}</p>
+                <p className="text-muted-foreground">{t("patient.patientId", { id: user?.uid?.slice(0, 8) || 'N/A' })}</p>
                 <div className="flex items-center space-x-3 mt-2">
                   <Badge className="dosha-vata px-3 py-1">
                     {currentPatient?.dosha} Constitution
                   </Badge>
                   <Badge variant="outline">
                     <Heart className="w-3 h-3 mr-1" />
-                    Active Patient
+                    {language === "hi" ? "सक्रिय रोगी" : "Active Patient"}
                   </Badge>
                 </div>
               </div>
@@ -219,7 +219,7 @@ const PatientSettings = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="name">{language === "hi" ? "पूरा नाम" : "Full Name"}</Label>
                   <Input
                     id="name"
                     value={profileData.name}
@@ -228,7 +228,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">{language === "hi" ? "ईमेल पता" : "Email Address"}</Label>
                   <div className="relative">
                     <Mail className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -241,7 +241,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="phone">{language === "hi" ? "फोन नंबर" : "Phone Number"}</Label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -254,7 +254,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="dob">Date of Birth</Label>
+                  <Label htmlFor="dob">{language === "hi" ? "जन्म तिथि" : "Date of Birth"}</Label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -270,7 +270,7 @@ const PatientSettings = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="gender">Gender</Label>
+                  <Label htmlFor="gender">{language === "hi" ? "लिंग" : "Gender"}</Label>
                   <Input
                     id="gender"
                     value={profileData.gender}
@@ -279,7 +279,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="address">{language === "hi" ? "पता" : "Address"}</Label>
                   <div className="relative">
                     <MapPin className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -292,7 +292,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="emergencyName">Emergency Contact Name</Label>
+                  <Label htmlFor="emergencyName">{language === "hi" ? "आपातकालीन संपर्क नाम" : "Emergency Contact Name"}</Label>
                   <Input
                     id="emergencyName"
                     value={profileData.emergencyName}
@@ -301,7 +301,7 @@ const PatientSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="emergencyContact">Emergency Contact Phone</Label>
+                  <Label htmlFor="emergencyContact">{language === "hi" ? "आपातकालीन संपर्क फोन" : "Emergency Contact Phone"}</Label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -319,7 +319,7 @@ const PatientSettings = () => {
             
             <div className="flex justify-end">
               <Button onClick={handleProfileUpdate} className="ayur-button-hero">
-                Update Profile
+                {language === "hi" ? "प्रोफाइल अपडेट करें" : "Update Profile"}
               </Button>
             </div>
           </Card>
@@ -328,7 +328,7 @@ const PatientSettings = () => {
           <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Heart className="w-5 h-5 mr-2 text-primary" />
-              Health Summary
+              {language === "hi" ? "स्वास्थ्य सारांश" : "Health Summary"}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -336,26 +336,26 @@ const PatientSettings = () => {
                 <div className="text-lg font-bold text-primary">
                   {currentPatient?.dosha}
                 </div>
-                <div className="text-sm text-muted-foreground">Body Constitution</div>
+                <div className="text-sm text-muted-foreground">{language === "hi" ? "शारीरिक प्रकृति" : "Body Constitution"}</div>
               </div>
 
               <div className="p-4 bg-accent/5 rounded-lg text-center">
                 <div className="text-lg font-bold text-accent">
                   {currentPatient?.llm_recommendation?.therapy || 'N/A'}
                 </div>
-                <div className="text-sm text-muted-foreground">Current Treatment</div>
+                <div className="text-sm text-muted-foreground">{language === "hi" ? "वर्तमान उपचार" : "Current Treatment"}</div>
               </div>
 
               <div className="p-4 bg-green-100 rounded-lg text-center">
                 <div className="text-lg font-bold text-green-600">
                   {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
                 </div>
-                <div className="text-sm text-muted-foreground">Health Score</div>
+                <div className="text-sm text-muted-foreground">{language === "hi" ? "स्वास्थ्य स्कोर" : "Health Score"}</div>
               </div>
             </div>
 
             <div className="mt-4">
-              <Label className="text-sm font-medium text-muted-foreground">Chief Complaint</Label>
+              <Label className="text-sm font-medium text-muted-foreground">{language === "hi" ? "मुख्य शिकायत" : "Chief Complaint"}</Label>
               <p className="text-sm mt-1">{currentPatient?.reason_for_visit}</p>
             </div>
           </Card>
@@ -366,12 +366,12 @@ const PatientSettings = () => {
           <Card className="ayur-card p-6 animate-slide-up">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Bell className="w-5 h-5 mr-2 text-primary" />
-              Notification Preferences
+              {language === "hi" ? "सूचना वरीयताएं" : "Notification Preferences"}
             </h3>
 
             <div className="space-y-6">
               <div>
-                <h4 className="font-medium mb-4">Treatment Notifications</h4>
+                <h4 className="font-medium mb-4">{language === "hi" ? "उपचार सूचनाएं" : "Treatment Notifications"}</h4>
                 <div className="space-y-4">
                   {Object.entries(notifications).slice(0, 5).map(([key, enabled]) => (
                     <div key={key} className="flex items-center justify-between py-2">
@@ -380,11 +380,11 @@ const PatientSettings = () => {
                           {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {key === 'sessionReminders' && 'Get notified before scheduled sessions'}
-                          {key === 'medicationAlerts' && 'Reminders for herbal treatments and medicines'}
-                          {key === 'appointmentUpdates' && 'Changes to your appointment schedule'}
-                          {key === 'healthTips' && 'Daily Ayurvedic health tips and advice'}
-                          {key === 'doctorMessages' && 'Messages from your practitioner'}
+                          {key === 'sessionReminders' && (language === "hi" ? 'निर्धारित सत्रों से पहले सूचना पाएं' : 'Get notified before scheduled sessions')}
+                          {key === 'medicationAlerts' && (language === "hi" ? 'हर्बल उपचार और दवाओं के लिए रिमाइंडर' : 'Reminders for herbal treatments and medicines')}
+                          {key === 'appointmentUpdates' && (language === "hi" ? 'आपके अपॉइंटमेंट शेड्यूल में बदलाव' : 'Changes to your appointment schedule')}
+                          {key === 'healthTips' && (language === "hi" ? 'दैनिक आयुर्वेदिक स्वास्थ्य टिप्स' : 'Daily Ayurvedic health tips and advice')}
+                          {key === 'doctorMessages' && (language === "hi" ? 'आपके चिकित्सक के संदेश' : 'Messages from your practitioner')}
                         </div>
                       </div>
                       <Switch
@@ -401,7 +401,7 @@ const PatientSettings = () => {
               <Separator />
 
               <div>
-                <h4 className="font-medium mb-4">Delivery Methods</h4>
+                <h4 className="font-medium mb-4">{language === "hi" ? "डिलीवरी तरीके" : "Delivery Methods"}</h4>
                 <div className="space-y-4">
                   {Object.entries(notifications).slice(5).map(([key, enabled]) => (
                     <div key={key} className="flex items-center justify-between py-2">
@@ -410,9 +410,9 @@ const PatientSettings = () => {
                           {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {key === 'systemUpdates' && 'App updates and maintenance notices'}
-                          {key === 'smsNotifications' && 'Receive notifications via SMS'}
-                          {key === 'emailNotifications' && 'Receive notifications via email'}
+                          {key === 'systemUpdates' && (language === "hi" ? 'ऐप अपडेट और मेंटेनेंस सूचनाएं' : 'App updates and maintenance notices')}
+                          {key === 'smsNotifications' && (language === "hi" ? 'SMS द्वारा सूचनाएं प्राप्त करें' : 'Receive notifications via SMS')}
+                          {key === 'emailNotifications' && (language === "hi" ? 'ईमेल द्वारा सूचनाएं प्राप्त करें' : 'Receive notifications via email')}
                         </div>
                       </div>
                       <Switch
@@ -431,7 +431,7 @@ const PatientSettings = () => {
             
             <div className="flex justify-end">
               <Button onClick={handleNotificationUpdate} className="ayur-button-hero">
-                Save Preferences
+                {language === "hi" ? "वरीयताएं सहेजें" : "Save Preferences"}
               </Button>
             </div>
           </Card>
@@ -443,13 +443,13 @@ const PatientSettings = () => {
             <Card className="ayur-card p-6 animate-slide-up">
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Shield className="w-5 h-5 mr-2 text-primary" />
-                Privacy & Security
+                {language === "hi" ? "गोपनीयता और सुरक्षा" : "Privacy & Security"}
               </h3>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Data Sharing</div>
+                    <div className="font-medium">{language === "hi" ? "डेटा शेयरिंग" : "Data Sharing"}</div>
                     <div className="text-sm text-muted-foreground">
                       Allow sharing anonymized data for research
                     </div>
@@ -464,7 +464,7 @@ const PatientSettings = () => {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Research Participation</div>
+                    <div className="font-medium">{language === "hi" ? "रिसर्च भागीदारी" : "Research Participation"}</div>
                     <div className="text-sm text-muted-foreground">
                       Participate in Ayurvedic research studies
                     </div>
@@ -523,19 +523,19 @@ const PatientSettings = () => {
             </Card>
 
             <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-              <h3 className="font-playfair text-xl font-semibold mb-4">Data Overview</h3>
+              <h3 className="font-playfair text-xl font-semibold mb-4">{language === "hi" ? "डेटा अवलोकन" : "Data Overview"}</h3>
               
               <div className="space-y-4">
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Medical Records</span>
+                    <span className="font-medium">{language === "hi" ? "मेडिकल रिकॉर्ड" : "Medical Records"}</span>
                     <span className="text-sm text-muted-foreground">3 documents</span>
                   </div>
                 </div>
 
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Session History</span>
+                    <span className="font-medium">{language === "hi" ? "सत्र इतिहास" : "Session History"}</span>
                     <span className="text-sm text-muted-foreground">
                       {sessionCount} sessions
                     </span>
@@ -544,7 +544,7 @@ const PatientSettings = () => {
 
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Symptom Tracking</span>
+                    <span className="font-medium">{language === "hi" ? "लक्षण ट्रैकिंग" : "Symptom Tracking"}</span>
                     <span className="text-sm text-muted-foreground">
                       {currentPatient?.symptoms?.length || 0} symptoms tracked
                     </span>
@@ -553,7 +553,7 @@ const PatientSettings = () => {
 
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Account Created</span>
+                    <span className="font-medium">{language === "hi" ? "खाता निर्माण" : "Account Created"}</span>
                     <span className="text-sm text-muted-foreground">
                       Aug 15, 2025
                     </span>
@@ -579,7 +579,7 @@ const PatientSettings = () => {
                   Connected
                 </Badge>
               ) : (
-                <Badge variant="outline">Not connected</Badge>
+                <Badge variant="outline">{language === "hi" ? "कनेक्ट नहीं" : "Not connected"}</Badge>
               )}
             </div>
             <div className="flex flex-wrap gap-3">
@@ -634,32 +634,32 @@ const PatientSettings = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Dark Mode</div>
-                    <div className="text-sm text-muted-foreground">Toggle dark theme</div>
+                    <div className="font-medium">{language === "hi" ? "डार्क मोड" : "Dark Mode"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "डार्क थीम टॉगल करें" : "Toggle dark theme"}</div>
                   </div>
                   <Switch />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Large Text</div>
-                    <div className="text-sm text-muted-foreground">Increase text size</div>
+                    <div className="font-medium">{language === "hi" ? "बड़ा टेक्स्ट" : "Large Text"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "टेक्स्ट आकार बढ़ाएं" : "Increase text size"}</div>
                   </div>
                   <Switch />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Animations</div>
-                    <div className="text-sm text-muted-foreground">Enable UI animations</div>
+                    <div className="font-medium">{language === "hi" ? "एनिमेशन" : "Animations"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "UI एनिमेशन सक्षम करें" : "Enable UI animations"}</div>
                   </div>
                   <Switch defaultChecked />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">High Contrast</div>
-                    <div className="text-sm text-muted-foreground">Improve readability</div>
+                    <div className="font-medium">{language === "hi" ? "हाई कॉन्ट्रास्ट" : "High Contrast"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "पठनीयता बेहतर करें" : "Improve readability"}</div>
                   </div>
                   <Switch />
                 </div>
@@ -674,22 +674,22 @@ const PatientSettings = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label>Language</Label>
+                  <Label>{t("lang.label")}</Label>
                   <Input value="English" className="mt-1" />
                 </div>
 
                 <div>
-                  <Label>Timezone</Label>
+                  <Label>{language === "hi" ? "समय क्षेत्र" : "Timezone"}</Label>
                   <Input value="Asia/Kolkata (IST)" className="mt-1" />
                 </div>
 
                 <div>
-                  <Label>Measurement Units</Label>
+                  <Label>{language === "hi" ? "मापन इकाइयां" : "Measurement Units"}</Label>
                   <Input value="Metric (kg, cm)" className="mt-1" />
                 </div>
 
                 <div>
-                  <Label>Reminder Time</Label>
+                  <Label>{language === "hi" ? "रिमाइंडर समय" : "Reminder Time"}</Label>
                   <Input 
                     type="number" 
                     value={preferences.reminderTime}

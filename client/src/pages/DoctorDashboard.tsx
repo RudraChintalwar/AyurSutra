@@ -340,7 +340,7 @@ const DoctorDashboard = () => {
       await fetchData();
     } catch (err) {
       console.error('Complete session error:', err);
-      toast({ title: 'Error', description: 'Failed to complete session.', variant: 'destructive' });
+      toast({ title: language === "hi" ? 'त्रुटि' : 'Error', description: t("doctorDashboard.failedComplete"), variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
@@ -381,7 +381,7 @@ const DoctorDashboard = () => {
       await fetchData();
     } catch (err) {
       console.error('Cancel session error:', err);
-      toast({ title: 'Error', description: 'Failed to cancel session.', variant: 'destructive' });
+      toast({ title: language === "hi" ? 'त्रुटि' : 'Error', description: t("doctorDashboard.failedCancel"), variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
@@ -669,7 +669,7 @@ const DoctorDashboard = () => {
             </h3>
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
               {sessions.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No sessions found</p>
+                <p className="text-sm text-muted-foreground text-center py-4">{t("doctorDashboard.noSessionsFound")}</p>
               )}
               {sessions
                 .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
@@ -789,7 +789,7 @@ const DoctorDashboard = () => {
 
                 {/* Contact */}
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground">Contact</div>
+                  <div className="text-sm font-medium text-muted-foreground">{t("doctorDashboard.contact")}</div>
                   <div className="text-sm">{selectedPatient.phone || 'No phone'}</div>
                   <div className="text-sm">{selectedPatient.email || 'No email'}</div>
                 </div>
@@ -797,7 +797,7 @@ const DoctorDashboard = () => {
                 {/* Chief Complaint */}
                 {selectedPatient.reason_for_visit && (
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground">Chief Complaint</div>
+                    <div className="text-sm font-medium text-muted-foreground">{t("doctorDashboard.chiefComplaint")}</div>
                     <div className="text-sm">{selectedPatient.reason_for_visit}</div>
                   </div>
                 )}
@@ -826,7 +826,7 @@ const DoctorDashboard = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground italic">No symptoms recorded yet. Patient needs to complete intake form.</p>
+                    <p className="text-xs text-muted-foreground italic">{t("doctorDashboard.noSymptomsYet")}</p>
                   )}
                 </div>
 
@@ -853,13 +853,13 @@ const DoctorDashboard = () => {
                       )}
                       {selectedPatient.llm_recommendation.clinical_summary && (
                         <div className="text-xs mt-2 p-2 bg-blue-50 rounded border border-blue-100">
-                          <span className="font-medium text-blue-700">Clinical Summary: </span>
+                          <span className="font-medium text-blue-700">{t("doctorDashboard.clinicalSummary")}: </span>
                           {selectedPatient.llm_recommendation.clinical_summary}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground italic">No AI recommendation yet. Schedule a session to generate one.</p>
+                    <p className="text-xs text-muted-foreground italic">{t("doctorDashboard.noAiRecommendation")}</p>
                   )}
                 </div>
 
@@ -881,7 +881,7 @@ const DoctorDashboard = () => {
               </div>
             )}
             {!selectedPatient && (
-              <p className="text-sm text-muted-foreground text-center py-8">Select a patient from the priority queue</p>
+              <p className="text-sm text-muted-foreground text-center py-8">{t("doctorDashboard.selectPatientHint")}</p>
             )}
           </Card>
         </div>
@@ -891,10 +891,10 @@ const DoctorDashboard = () => {
       {showModifyPanel && modifySessionId && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <Card className="p-6 w-full max-w-md animate-scale-in">
-            <h3 className="font-playfair text-lg font-semibold mb-4">Modify Treatment Plan</h3>
+            <h3 className="font-playfair text-lg font-semibold mb-4">{t("doctorDashboard.modifyPlan")}</h3>
             <div className="space-y-4">
               <div>
-                <Label>Therapy Type</Label>
+                <Label>{t("doctorDashboard.therapyType")}</Label>
                 <Input
                   value={modifyTherapy}
                   onChange={(e) => setModifyTherapy(e.target.value)}
@@ -902,7 +902,7 @@ const DoctorDashboard = () => {
                 />
               </div>
               <div>
-                <Label>New Date & Time (Optional)</Label>
+                <Label>{t("doctorDashboard.newDateTimeOptional")}</Label>
                 <Input
                   type="datetime-local"
                   value={modifyDatetime}
@@ -931,13 +931,13 @@ const DoctorDashboard = () => {
       {showCompleteDialog && completeSessionId && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <Card className="p-6 w-full max-w-md animate-scale-in">
-            <h3 className="font-playfair text-lg font-semibold mb-2">Complete Session</h3>
+            <h3 className="font-playfair text-lg font-semibold mb-2">{t("doctorDashboard.completeSession")}</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Mark this session as completed and add your clinical notes.
             </p>
             <div className="space-y-4">
               <div>
-                <Label>Session Notes</Label>
+                <Label>{t("doctorDashboard.sessionNotes")}</Label>
                 <Textarea
                   value={doctorNotes}
                   onChange={(e) => setDoctorNotes(e.target.value)}

@@ -8,6 +8,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Filter, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FilterModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
     priorityRange: [0, 100],
   });
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const handleDoshaChange = (dosha: string, checked: boolean | string) => {
     const isChecked = checked === true;
@@ -51,8 +53,8 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
     });
 
     toast({
-      title: "Filters Applied",
-      description: `${activeFilters.length} filter(s) applied successfully`,
+      title: t("filters.applied"),
+      description: t("filters.appliedCount", { count: activeFilters.length }),
     });
     onClose();
   };
@@ -67,8 +69,8 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
       priorityRange: [0, 100],
     });
     toast({
-      title: "Filters Cleared",
-      description: "All filters have been reset",
+      title: t("filters.cleared"),
+      description: t("filters.resetAll"),
     });
   };
 
@@ -88,29 +90,29 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-3">
             <Filter className="w-5 h-5 text-primary" />
-            <span>Filter {type === 'patients' ? 'Patients' : 'Sessions'}</span>
+            <span>{type === 'patients' ? t("filters.filterPatients") : t("filters.filterSessions")}</span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Priority Filter */}
           <div>
-            <Label>Priority Level</Label>
+            <Label>{t("filters.priorityLevel")}</Label>
             <Select value={filters.priority} onValueChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}>
               <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Select priority" />
+                <SelectValue placeholder={t("filters.selectPriority")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="high">High Priority (80+)</SelectItem>
-                <SelectItem value="medium">Medium Priority (60-79)</SelectItem>
-                <SelectItem value="low">Low Priority (0-59)</SelectItem>
+                <SelectItem value="high">{t("filters.highPriority")}</SelectItem>
+                <SelectItem value="medium">{t("filters.mediumPriority")}</SelectItem>
+                <SelectItem value="low">{t("filters.lowPriority")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Priority Range Slider */}
           <div>
-            <Label>Priority Score Range: {filters.priorityRange[0]} - {filters.priorityRange[1]}</Label>
+            <Label>{t("filters.priorityScoreRange")}: {filters.priorityRange[0]} - {filters.priorityRange[1]}</Label>
             <Slider
               value={filters.priorityRange}
               onValueChange={(value) => setFilters(prev => ({ ...prev, priorityRange: value }))}
@@ -124,7 +126,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
           {/* Dosha Filter */}
           {type === 'patients' && (
             <div>
-              <Label>Ayurvedic Constitution</Label>
+              <Label>{t("filters.ayurvedicConstitution")}</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {doshaOptions.map((dosha) => (
                   <div key={dosha} className="flex items-center space-x-2">
@@ -153,23 +155,23 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
 
           {/* Status Filter */}
           <div>
-            <Label>Status</Label>
+            <Label>{t("filters.status")}</Label>
             <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
               <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Select status" />
+                <SelectValue placeholder={t("filters.selectStatus")} />
               </SelectTrigger>
               <SelectContent>
                 {type === 'sessions' ? (
                   <>
-                    <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="scheduled">{t("sessions.status.scheduled")}</SelectItem>
+                    <SelectItem value="completed">{t("patient.completed")}</SelectItem>
+                    <SelectItem value="cancelled">{t("common.cancelled")}</SelectItem>
                   </>
                 ) : (
                   <>
-                    <SelectItem value="active">Active Treatment</SelectItem>
-                    <SelectItem value="new">New Patient</SelectItem>
-                    <SelectItem value="followup">Follow-up Required</SelectItem>
+                    <SelectItem value="active">{t("filters.activeTreatment")}</SelectItem>
+                    <SelectItem value="new">{t("filters.newPatient")}</SelectItem>
+                    <SelectItem value="followup">{t("filters.followupRequired")}</SelectItem>
                   </>
                 )}
               </SelectContent>
@@ -179,10 +181,10 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
           {/* Therapy Filter */}
           {type === 'sessions' && (
             <div>
-              <Label>Therapy Type</Label>
+              <Label>{t("filters.therapyType")}</Label>
               <Select value={filters.therapy} onValueChange={(value) => setFilters(prev => ({ ...prev, therapy: value }))}>
                 <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select therapy" />
+                  <SelectValue placeholder={t("filters.selectTherapy")} />
                 </SelectTrigger>
                 <SelectContent>
                   {therapyOptions.map((therapy) => (
@@ -197,16 +199,16 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
 
           {/* Date Range Filter */}
           <div>
-            <Label>Date Range</Label>
+            <Label>{t("filters.dateRange")}</Label>
             <Select value={filters.dateRange} onValueChange={(value) => setFilters(prev => ({ ...prev, dateRange: value }))}>
               <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Select date range" />
+                <SelectValue placeholder={t("filters.selectDateRange")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="quarter">Last 3 Months</SelectItem>
+                <SelectItem value="today">{t("common.today")}</SelectItem>
+                <SelectItem value="week">{t("filters.thisWeek")}</SelectItem>
+                <SelectItem value="month">{t("filters.thisMonth")}</SelectItem>
+                <SelectItem value="quarter">{t("filters.last3Months")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -216,15 +218,15 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, type }) => {
         <div className="flex items-center justify-between pt-6 border-t">
           <Button variant="outline" onClick={clearFilters}>
             <X className="w-4 h-4 mr-2" />
-            Clear All
+            {t("filters.clearAll")}
           </Button>
           <div className="flex space-x-2">
             <Button variant="outline" onClick={onClose}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={applyFilters} className="ayur-button-hero">
               <Filter className="w-4 h-4 mr-2" />
-              Apply Filters
+              {t("filters.applyFilters")}
             </Button>
           </div>
         </div>

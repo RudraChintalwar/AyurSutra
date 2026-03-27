@@ -20,10 +20,12 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 import { useDoctorData } from '@/hooks/useDoctorData';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const DoctorAnalytics = () => {
   const { patients, sessions, loading } = useDoctorData();
   const { toast } = useToast();
+  const { t, language } = useLanguage();
 
   const handleExportReport = () => {
     try {
@@ -44,9 +46,9 @@ const DoctorAnalytics = () => {
       a.download = `ayursutra_analytics_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: 'Report Exported \u2705', description: 'CSV file downloaded successfully.' });
+      toast({ title: language === "hi" ? 'रिपोर्ट एक्सपोर्ट हुई ✅' : 'Report Exported ✅', description: language === "hi" ? 'CSV फ़ाइल सफलतापूर्वक डाउनलोड हुई।' : 'CSV file downloaded successfully.' });
     } catch (err) {
-      toast({ title: 'Export Failed', description: 'Could not generate report.', variant: 'destructive' });
+      toast({ title: language === "hi" ? 'एक्सपोर्ट असफल' : 'Export Failed', description: language === "hi" ? 'रिपोर्ट तैयार नहीं हो सकी।' : 'Could not generate report.', variant: 'destructive' });
     }
   };
 
@@ -95,20 +97,20 @@ const DoctorAnalytics = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Analytics & Insights
+            {t("doctorAnalytics.title")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Track practice performance and patient outcomes
+            {t("doctorAnalytics.subtitle")}
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="outline" onClick={() => toast({ title: 'Filters', description: 'Filter options coming soon.' })}>
+          <Button variant="outline" onClick={() => toast({ title: t('doctorAnalytics.filters'), description: language === "hi" ? 'फ़िल्टर विकल्प जल्द आएंगे।' : 'Filter options coming soon.' })}>
             <Filter className="w-4 h-4 mr-2" />
-            Filters
+            {t("doctorAnalytics.filters")}
           </Button>
           <Button className="ayur-button-accent" onClick={handleExportReport}>
             <Download className="w-4 h-4 mr-2" />
-            Export Report
+            {t("doctorAnalytics.export")}
           </Button>
         </div>
       </div>
@@ -125,7 +127,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xl font-bold text-primary">{totalPatients}</div>
-              <div className="text-sm text-muted-foreground">Active Patients</div>
+              <div className="text-sm text-muted-foreground">{t("doctorAnalytics.activePatients")}</div>
             </div>
             <div className="p-3 bg-primary/10 rounded-lg">
               <Users className="w-6 h-6 text-primary" />
@@ -134,7 +136,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center text-sm mt-2">
             <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
             <span className="text-green-600">+15%</span>
-            <span className="text-muted-foreground ml-1">vs last month</span>
+            <span className="text-muted-foreground ml-1">{t("doctorAnalytics.vsLastMonth")}</span>
           </div>
         </Card>
 
@@ -142,7 +144,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xl font-bold text-accent">85%</div>
-              <div className="text-sm text-muted-foreground">Recovery Rate</div>
+              <div className="text-sm text-muted-foreground">{t("patient.recoveryProgress")}</div>
             </div>
             <div className="p-3 bg-accent/10 rounded-lg">
               <TrendingUp className="w-6 h-6 text-accent" />
@@ -151,7 +153,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center text-sm mt-2">
             <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
             <span className="text-green-600">+3%</span>
-            <span className="text-muted-foreground ml-1">improvement</span>
+            <span className="text-muted-foreground ml-1">{t("doctorAnalytics.improvement")}</span>
           </div>
         </Card>
 
@@ -159,7 +161,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xl font-bold text-green-600">{completedSessions}</div>
-              <div className="text-sm text-muted-foreground">Sessions Completed</div>
+              <div className="text-sm text-muted-foreground">{t("doctorAnalytics.sessionsCompleted")}</div>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
               <Calendar className="w-6 h-6 text-green-600" />
@@ -174,7 +176,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xl font-bold text-ayur-soft-gold">4.5</div>
-              <div className="text-sm text-muted-foreground">Avg Satisfaction</div>
+              <div className="text-sm text-muted-foreground">{t("doctorAnalytics.avgSatisfaction")}</div>
             </div>
             <div className="p-3 bg-ayur-soft-gold/10 rounded-lg">
               <Star className="w-6 h-6 text-ayur-soft-gold" />
@@ -182,7 +184,7 @@ const DoctorAnalytics = () => {
           </div>
           <div className="flex items-center text-sm mt-2">
             <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
-            <span className="text-green-600">Excellent</span>
+            <span className="text-green-600">{t("doctorAnalytics.excellent")}</span>
           </div>
         </Card>
       </div>
@@ -193,7 +195,7 @@ const DoctorAnalytics = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-playfair text-xl font-semibold flex items-center">
               <TrendingUp className="w-5 h-5 mr-2 text-primary" />
-              Recovery Rate Trend
+              {t("doctorAnalytics.recoveryRateTrend")}
             </h3>
             <Badge className="bg-green-100 text-green-700 border-green-200">
               +10% This Quarter
@@ -229,7 +231,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <BarChart3 className="w-5 h-5 mr-2 text-primary" />
-            Therapy Success Rates
+            {t("doctorAnalytics.therapySuccess")}
           </h3>
           
           <div className="space-y-4">
@@ -254,7 +256,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <PieChart className="w-5 h-5 mr-2 text-primary" />
-            Patient Dosha Distribution
+            {t("doctorAnalytics.doshaDistribution")}
           </h3>
           
           <div className="h-64">
@@ -288,7 +290,7 @@ const DoctorAnalytics = () => {
                   <span className="font-medium">{dosha.name}</span>
                 </div>
                 <div className="text-2xl font-bold">{dosha.value}</div>
-                <div className="text-xs text-muted-foreground">patients</div>
+                <div className="text-xs text-muted-foreground">{t("doctorAnalytics.patients")}</div>
               </div>
             ))}
           </div>
@@ -298,7 +300,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <Star className="w-5 h-5 mr-2 text-primary" />
-            Patient Satisfaction Trend
+            {t("doctorAnalytics.satisfactionTrend")}
           </h3>
           
           <div className="h-64">
@@ -326,7 +328,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-slide-up">
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <Activity className="w-5 h-5 mr-2 text-primary" />
-            Top Performing Treatments
+            {t("doctorAnalytics.topTreatments")}
           </h3>
           
           <div className="space-y-3">
@@ -351,7 +353,7 @@ const DoctorAnalytics = () => {
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-primary">{therapy.success_rate}%</div>
-                    <div className="text-xs text-muted-foreground">success rate</div>
+                    <div className="text-xs text-muted-foreground">{t("doctorAnalytics.successRate")}</div>
                   </div>
                 </div>
               ))}
@@ -361,7 +363,7 @@ const DoctorAnalytics = () => {
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <Users className="w-5 h-5 mr-2 text-primary" />
-            High Priority Patients
+            {t("doctorAnalytics.highPriorityPatients")}
           </h3>
           
           <div className="space-y-3">
@@ -395,7 +397,7 @@ const DoctorAnalytics = () => {
           </div>
 
           <Button variant="outline" className="w-full mt-4">
-            View All Patients
+            {t("doctorAnalytics.viewAllPatients")}
           </Button>
         </Card>
       </div>

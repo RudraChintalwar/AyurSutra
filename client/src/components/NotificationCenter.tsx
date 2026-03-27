@@ -31,6 +31,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface NotificationItem {
   id: string;
@@ -57,6 +58,8 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const { user, role } = useAuth();
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const tx = (en: string, hi: string) => (language === 'hi' ? hi : en);
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -70,8 +73,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
           const data = doc.data();
           return {
             id: doc.id,
-            title: `Session ${data.status === 'scheduled' ? 'Upcoming' : 'Completed'}: ${data.therapy || 'Panchakarma'}`,
-            body: `${data.therapy || 'Therapy'} session — ${data.duration_minutes || 60} minutes.`,
+            title: language === 'hi'
+              ? `सत्र ${data.status === 'scheduled' ? 'आगामी' : 'पूर्ण'}: ${data.therapy || 'पंचकर्म'}`
+              : `Session ${data.status === 'scheduled' ? 'Upcoming' : 'Completed'}: ${data.therapy || 'Panchakarma'}`,
+            body: language === 'hi'
+              ? `${data.therapy || 'थेरेपी'} सत्र — ${data.duration_minutes || 60} मिनट।`
+              : `${data.therapy || 'Therapy'} session — ${data.duration_minutes || 60} minutes.`,
             channel: 'in-app',
             datetime: data.datetime || new Date().toISOString(),
             read: data.status === 'completed',
@@ -80,8 +87,8 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
         });
         generated.unshift({
           id: 'welcome',
-          title: 'Welcome to AyurSutra',
-          body: 'Your Ayurvedic wellness journey starts here!',
+          title: tx('Welcome to AyurSutra', 'AyurSutra में आपका स्वागत है'),
+          body: tx('Your Ayurvedic wellness journey starts here!', 'आपकी आयुर्वेदिक वेलनेस यात्रा यहीं से शुरू होती है!'),
           channel: 'in-app',
           datetime: new Date().toISOString(),
           read: false,
@@ -133,7 +140,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
       )
     );
     toast({
-      title: "Notification marked as read",
+      title: tx("Notification marked as read", "नोटिफिकेशन पढ़ा हुआ चिह्नित किया गया"),
       duration: 2000
     });
   };
@@ -141,7 +148,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const deleteNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
     toast({
-      title: "Notification deleted",
+      title: tx("Notification deleted", "नोटिफिकेशन हटाया गया"),
       duration: 2000
     });
   };
@@ -149,7 +156,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     toast({
-      title: "All notifications marked as read",
+      title: tx("All notifications marked as read", "सभी नोटिफिकेशन पढ़े हुए चिह्नित किए गए"),
       duration: 2000
     });
   };
@@ -169,9 +176,9 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     const notificationDate = new Date(datetime);
     const diffInHours = Math.floor((now.getTime() - notificationDate.getTime()) / (1000 * 60 * 60));
     
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    return notificationDate.toLocaleDateString();
+    if (diffInHours < 1) return tx('Just now', 'अभी अभी');
+    if (diffInHours < 24) return language === 'hi' ? `${diffInHours} घंटे पहले` : `${diffInHours}h ago`;
+    return notificationDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN');
   };
 
   return (
@@ -194,7 +201,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <SheetTitle className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Bell className="w-5 h-5" />
-              <span>Notifications</span>
+              <span>{tx('Notifications', 'नोटिफिकेशन')}</span>
               {unreadCount > 0 && (
                 <Badge className="bg-red-500 text-white">
                   {unreadCount}
@@ -208,28 +215,28 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 onClick={markAllAsRead}
                 className="text-xs"
               >
-                Mark all read
+                {tx('Mark all read', 'सभी पढ़े चिह्नित करें')}
               </Button>
             )}
           </SheetTitle>
           <SheetDescription>
-            Stay updated with your latest notifications
+            {tx('Stay updated with your latest notifications', 'अपने नवीनतम नोटिफिकेशन से अपडेट रहें')}
           </SheetDescription>
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs">{tx('All', 'सभी')}</TabsTrigger>
             <TabsTrigger value="unread" className="text-xs">
-              Unread
+              {tx('Unread', 'अपठित')}
               {unreadCount > 0 && (
                 <Badge className="ml-1 w-4 h-4 p-0 text-xs bg-red-500 text-white">
                   {unreadCount}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="system" className="text-xs">System</TabsTrigger>
-            <TabsTrigger value="messages" className="text-xs">Messages</TabsTrigger>
+            <TabsTrigger value="system" className="text-xs">{tx('System', 'सिस्टम')}</TabsTrigger>
+            <TabsTrigger value="messages" className="text-xs">{tx('Messages', 'संदेश')}</TabsTrigger>
           </TabsList>
 
           <ScrollArea className="h-[calc(100vh-200px)] mt-4">
@@ -296,7 +303,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                                 }}
                                 className="h-6 px-2 text-xs text-primary hover:text-primary-foreground hover:bg-primary"
                               >
-                                Mark read
+                                {tx('Mark read', 'पढ़ा चिह्नित करें')}
                               </Button>
                             )}
                           </div>
@@ -310,8 +317,8 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   <Bell className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <p className="text-muted-foreground">
                     {activeTab === 'unread' 
-                      ? 'No unread notifications' 
-                      : 'No notifications found'
+                      ? tx('No unread notifications', 'कोई अपठित नोटिफिकेशन नहीं')
+                      : tx('No notifications found', 'कोई नोटिफिकेशन नहीं मिला')
                     }
                   </p>
                 </div>

@@ -67,7 +67,7 @@ const emptyProduct = (): Omit<Product, "id"> => ({
 
 export default function EmartAdminDashboard() {
   const { user } = useAuth() as any;
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -173,13 +173,13 @@ export default function EmartAdminDashboard() {
   const getStatusBadge = (status: Order["status"]) => {
     switch (status) {
       case "delivered":
-        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">Delivered</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">{t("emart.statusDelivered")}</span>;
       case "cancelled":
-        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">Cancelled</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">{t("emart.statusCancelled")}</span>;
       case "shipped":
-        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">Shipped</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">{t("emart.statusShipped")}</span>;
       default:
-        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">Pending</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">{t("emart.statusPending")}</span>;
     }
   };
 
@@ -237,7 +237,7 @@ export default function EmartAdminDashboard() {
       };
 
       if (!payload.name || !payload.category) {
-        throw new Error("Product `name` and `category` are required.");
+        throw new Error(t("emart.requiredNameCategory"));
       }
 
       if (editingProductId) {
@@ -254,7 +254,7 @@ export default function EmartAdminDashboard() {
   };
 
   const deleteProduct = async (productId: string) => {
-    const ok = confirm("Delete this product? This cannot be undone.");
+    const ok = confirm(t("emart.deleteConfirm"));
     if (!ok) return;
     await deleteDoc(doc(db, "products", productId));
     await refreshAll();
@@ -271,9 +271,9 @@ export default function EmartAdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4">Products: {products.length}</Card>
+        <Card className="p-4">{t("emart.products")}: {products.length}</Card>
         <Card className="p-4">{t("emart.orders")}: {orders.length}</Card>
-        <Card className="p-4">Pending: {statusCounts.pending}</Card>
+        <Card className="p-4">{t("emart.statusPending")}: {statusCounts.pending}</Card>
       </div>
 
       <Card className="p-4 space-y-4">
@@ -295,19 +295,19 @@ export default function EmartAdminDashboard() {
                   <div className="min-w-0">
                     <div className="font-medium truncate">{p.name}</div>
                     <div className="text-sm text-muted-foreground truncate">
-                      {p.category} | Rs {p.price} | stock {p.stock}
+                      {p.category} | Rs {p.price} | {t("emart.stock")} {p.stock}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button size="sm" variant="outline" onClick={() => startEditProduct(p)}>
-                      Edit
+                      {t("common.edit")}
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
                       onClick={() => deleteProduct(p.id)}
                     >
-                      Delete
+                      {t("common.delete")}
                     </Button>
                   </div>
                 </div>
@@ -320,41 +320,41 @@ export default function EmartAdminDashboard() {
 
           <div className="space-y-3">
             <div className="text-sm text-muted-foreground">
-              {editingProductId ? `Editing: ${editingProductId.slice(0, 8)}` : t("emart.createProduct")}
+              {editingProductId ? `${t("common.editing")}: ${editingProductId.slice(0, 8)}` : t("emart.createProduct")}
             </div>
 
             <div className="space-y-2">
               <Input
                 value={productForm.name}
                 onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Name *"
+                placeholder={t("emart.nameRequired")}
               />
               <Input
                 value={productForm.category}
                 onChange={(e) => setProductForm((p) => ({ ...p, category: e.target.value }))}
-                placeholder="Category *"
+                placeholder={t("emart.categoryRequired")}
               />
               <Input
                 type="number"
                 value={productForm.price}
                 onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                placeholder="Price"
+                placeholder={t("emart.price")}
               />
               <Input
                 type="number"
                 value={productForm.stock}
                 onChange={(e) => setProductForm((p) => ({ ...p, stock: Number(e.target.value) }))}
-                placeholder="Stock"
+                placeholder={t("emart.stock")}
               />
               <Input
                 value={productForm.imageUrl || ""}
                 onChange={(e) => setProductForm((p) => ({ ...p, imageUrl: e.target.value }))}
-                placeholder="Image URL"
+                placeholder={t("emart.imageUrl")}
               />
               <Input
                 value={productForm.brand || ""}
                 onChange={(e) => setProductForm((p) => ({ ...p, brand: e.target.value }))}
-                placeholder="Brand"
+                placeholder={t("emart.brand")}
               />
               <div className="flex items-center gap-2">
                 <input
@@ -362,22 +362,22 @@ export default function EmartAdminDashboard() {
                   checked={Boolean(productForm.prescription)}
                   onChange={(e) => setProductForm((p) => ({ ...p, prescription: e.target.checked }))}
                 />
-                <div className="text-sm">Prescription required</div>
+                <div className="text-sm">{t("emart.prescriptionRequired")}</div>
               </div>
               <Textarea
                 value={productForm.description || ""}
                 onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
-                placeholder="Description"
+                placeholder={t("emart.description")}
                 rows={3}
               />
 
               <div className="flex gap-2">
                 <Button onClick={saveProduct} disabled={productSaving}>
-                  {editingProductId ? "Save Changes" : "Create Product"}
+                  {editingProductId ? t("common.saveChanges") : t("emart.createProduct")}
                 </Button>
                 {editingProductId && (
                   <Button variant="outline" onClick={resetProductForm} disabled={productSaving}>
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                 )}
               </div>
@@ -387,7 +387,7 @@ export default function EmartAdminDashboard() {
       </Card>
 
       <Card className="p-4 space-y-4">
-        <h2 className="font-semibold">Orders</h2>
+        <h2 className="font-semibold">{t("emart.orders")}</h2>
 
         <div className="flex flex-col md:flex-row gap-3">
           <Input
@@ -396,7 +396,7 @@ export default function EmartAdminDashboard() {
               setOrderQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search orders by id or user..."
+            placeholder={t("emart.searchOrders")}
           />
 
           <div className="flex gap-2">
@@ -410,7 +410,7 @@ export default function EmartAdminDashboard() {
                   setPage(1);
                 }}
               >
-                {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
+                {s === "all" ? t("common.all") : t(`emart.status${s[0].toUpperCase()}${s.slice(1)}`)}
                 {s !== "all" ? ` (${statusCounts[s as any] || 0})` : ""}
               </Button>
             ))}
@@ -429,15 +429,15 @@ export default function EmartAdminDashboard() {
                   {getStatusBadge(o.status)}
                 </div>
                 <div className="text-sm text-muted-foreground truncate">
-                  user: {o.userId} | Rs {o.total}
+                  {t("common.user")}: {o.userId} | Rs {o.total}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {o.createdAt?.toDate ? (
-                    <>Placed: {o.createdAt.toDate().toLocaleString("en-IN")}</>
+                    <>{t("emart.placedOn")}: {o.createdAt.toDate().toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</>
                   ) : (
-                    <>Placed: {o.createdAt ? new Date(o.createdAt).toLocaleString("en-IN") : "Unknown"}</>
+                    <>{t("emart.placedOn")}: {o.createdAt ? new Date(o.createdAt).toLocaleString(language === "hi" ? "hi-IN" : "en-IN") : t("common.unknown")}</>
                   )}
-                  {o.deliveryDate ? <> | Delivery: {new Date(o.deliveryDate).toLocaleDateString("en-IN")}</> : null}
+                  {o.deliveryDate ? <> | {t("emart.estimatedDelivery")}: {new Date(o.deliveryDate).toLocaleDateString(language === "hi" ? "hi-IN" : "en-IN")}</> : null}
                 </div>
               </div>
 
@@ -447,22 +447,22 @@ export default function EmartAdminDashboard() {
                   variant="outline"
                   onClick={() => navigate(`/emart/admin/orders/${o.id}`)}
                 >
-                  Open
+                  {t("common.open")}
                 </Button>
 
                 {canTransition(o.status, "shipped") && (
                   <Button size="sm" onClick={() => updateOrder(o.id, "shipped")}>
-                    Ship
+                    {t("emart.ship")}
                   </Button>
                 )}
                 {canTransition(o.status, "delivered") && (
                   <Button size="sm" onClick={() => updateOrder(o.id, "delivered")}>
-                    Deliver
+                    {t("emart.deliver")}
                   </Button>
                 )}
                 {canTransition(o.status, "cancelled") && (
                   <Button size="sm" variant="destructive" onClick={() => updateOrder(o.id, "cancelled")}>
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                 )}
               </div>
@@ -470,20 +470,20 @@ export default function EmartAdminDashboard() {
           ))}
 
           {pagedOrders.length === 0 && (
-            <div className="text-sm text-muted-foreground">No orders match your filter.</div>
+            <div className="text-sm text-muted-foreground">{t("emart.noOrdersMatch")}</div>
           )}
         </div>
 
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Page {page} / {totalPages} (showing {pagedOrders.length} of {filteredOrders.length})
+            {t("common.page")} {page} / {totalPages} ({t("common.showing")} {pagedOrders.length} {t("common.of")} {filteredOrders.length})
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
+              {t("common.prev")}
             </Button>
             <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
+              {t("common.next")}
             </Button>
           </div>
         </div>

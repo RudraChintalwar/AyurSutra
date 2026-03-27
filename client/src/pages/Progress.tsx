@@ -11,12 +11,14 @@ import {
   Clock
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar } from 'recharts';
 
 const ProgressPage = () => {
   const { user, role } = useAuth();
+  const { t } = useLanguage();
   const [patientSessions, setPatientSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,14 +50,14 @@ const ProgressPage = () => {
   const improvementPerSession = 5;
   
   const chartData = Array.from({ length: Math.max(completedSessions + 1, 4) }, (_, i) => ({
-    session: `Session ${i}`,
+    session: `${t("progress.session")} ${i}`,
     overall: Math.min(baseScore + (i * improvementPerSession), 100),
     vitality: Math.min(baseScore - 10 + (i * (improvementPerSession + 2)), 100)
   }));
 
   const recoveryData = [
-    { name: 'Recovery', value: progressPercentage, fill: 'hsl(var(--primary))' },
-    { name: 'Remaining', value: 100 - progressPercentage, fill: 'hsl(var(--muted))' }
+    { name: t("progress.recovery"), value: progressPercentage, fill: 'hsl(var(--primary))' },
+    { name: t("progress.remaining"), value: 100 - progressPercentage, fill: 'hsl(var(--muted))' }
   ];
 
   // Dynamic session type breakdown
@@ -75,19 +77,19 @@ const ProgressPage = () => {
     color: index % 2 === 0 ? 'hsl(var(--primary))' : 'hsl(var(--ayur-saffron))'
   }));
 
-  const symptoms = currentPatient?.symptoms || [{ name: "General Fatigue", score: 6 }];
+  const symptoms = currentPatient?.symptoms || [{ name: t("progress.generalFatigue"), score: 6 }];
   const averageImprovement = progressPercentage; // Use overall progress for simplicity
 
-  if (loading) return <div className="p-6 text-center">Loading progress...</div>;
+  if (loading) return <div className="p-6 text-center">{t("progress.loading")}</div>;
 
   if (role !== 'patient') {
     return (
       <div className="p-6">
         <div className="text-center py-12">
           <BarChart3 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-          <h2 className="text-xl font-semibold mb-2">Analytics Dashboard</h2>
+          <h2 className="text-xl font-semibold mb-2">{t("progress.analyticsDashboard")}</h2>
           <p className="text-muted-foreground">
-            Switch to patient view to see progress tracking, or visit the Analytics page for practitioner insights.
+            {t("progress.switchToPatient")}
           </p>
         </div>
       </div>
@@ -99,10 +101,10 @@ const ProgressPage = () => {
       {/* Header */}
       <div className="mb-6">
         <h1 className="font-playfair text-3xl font-bold text-primary mb-2">
-          My Progress
+          {t("progress.myProgress")}
         </h1>
         <p className="text-muted-foreground">
-          Track your Panchakarma journey and health improvements
+          {t("progress.trackJourney")}
         </p>
       </div>
 
@@ -115,7 +117,7 @@ const ProgressPage = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-primary">{progressPercentage}%</div>
-              <div className="text-sm text-muted-foreground">Overall Recovery</div>
+              <div className="text-sm text-muted-foreground">{t("progress.overallRecovery")}</div>
             </div>
           </div>
         </Card>
@@ -127,7 +129,7 @@ const ProgressPage = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-accent">{Math.round(averageImprovement)}%</div>
-              <div className="text-sm text-muted-foreground">Symptom Improvement</div>
+              <div className="text-sm text-muted-foreground">{t("progress.symptomImprovement")}</div>
             </div>
           </div>
         </Card>
@@ -139,7 +141,7 @@ const ProgressPage = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-ayur-soft-gold">{patientSessions.length}</div>
-              <div className="text-sm text-muted-foreground">Total Sessions</div>
+              <div className="text-sm text-muted-foreground">{t("progress.totalSessions")}</div>
             </div>
           </div>
         </Card>
@@ -153,7 +155,7 @@ const ProgressPage = () => {
               <div className="text-2xl font-bold text-green-600">
                 {completedSessions}
               </div>
-              <div className="text-sm text-muted-foreground">Completed</div>
+              <div className="text-sm text-muted-foreground">{t("patient.completed")}</div>
             </div>
           </div>
         </Card>
@@ -165,7 +167,7 @@ const ProgressPage = () => {
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <TrendingUp className="w-5 h-5 mr-2 text-primary" />
-            Symptom Progress Over Time
+            {t("progress.symptomOverTime")}
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -186,7 +188,7 @@ const ProgressPage = () => {
                   stroke="hsl(var(--accent))" 
                   strokeWidth={3}
                   dot={{ fill: 'hsl(var(--accent))', strokeWidth: 0, r: 4 }}
-                  name="Vitality"
+                  name={t("progress.vitality")}
                 />
                 <Line 
                   type="monotone" 
@@ -194,7 +196,7 @@ const ProgressPage = () => {
                   stroke="hsl(var(--primary))" 
                   strokeWidth={3}
                   dot={{ fill: 'hsl(var(--primary))', strokeWidth: 0, r: 4 }}
-                  name="Overall Score"
+                  name={t("progress.overallScore")}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -202,11 +204,11 @@ const ProgressPage = () => {
           <div className="flex justify-center space-x-6 mt-4 text-sm">
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 rounded-full bg-accent"></div>
-              <span>Vitality</span>
+              <span>{t("progress.vitality")}</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 rounded-full bg-primary"></div>
-              <span>Overall Score</span>
+              <span>{t("progress.overallScore")}</span>
             </div>
           </div>
         </Card>
@@ -215,7 +217,7 @@ const ProgressPage = () => {
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.5s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <Target className="w-5 h-5 mr-2 text-primary" />
-            Recovery Progress
+            {t("progress.recoveryProgress")}
           </h3>
           <div className="h-64 flex items-center justify-center">
             <div className="relative">
@@ -232,14 +234,14 @@ const ProgressPage = () => {
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-primary">{progressPercentage}%</div>
-                  <div className="text-sm text-muted-foreground">Recovered</div>
+                  <div className="text-sm text-muted-foreground">{t("progress.recovered")}</div>
                 </div>
               </div>
             </div>
           </div>
           <div className="text-center mt-4">
             <p className="text-sm text-muted-foreground">
-              Excellent progress! Continue with your current treatment plan.
+              {t("progress.excellentContinue")}
             </p>
           </div>
         </Card>
@@ -249,7 +251,7 @@ const ProgressPage = () => {
       <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.6s' }}>
         <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
           <Activity className="w-5 h-5 mr-2 text-primary" />
-          Current Symptom Status
+          {t("progress.currentSymptomStatus")}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {symptoms.map((symptom: { name: string, score: number }, index: number) => {
@@ -271,9 +273,9 @@ const ProgressPage = () => {
                   className="mb-2 h-2"
                 />
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Improvement: {Math.max(Math.round(improvementPercent), 0)}%</span>
+                  <span>{t("progress.improvement")}: {Math.max(Math.round(improvementPercent), 0)}%</span>
                   <span>
-                    {symptom.score <= 3 ? 'Excellent' : symptom.score <= 6 ? 'Good' : 'Needs attention'}
+                    {symptom.score <= 3 ? t("common.excellent") : symptom.score <= 6 ? t("common.good") : t("common.needsAttention")}
                   </span>
                 </div>
               </div>
@@ -286,7 +288,7 @@ const ProgressPage = () => {
       <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.7s' }}>
         <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
           <BarChart3 className="w-5 h-5 mr-2 text-primary" />
-          Treatment Sessions Breakdown
+          {t("progress.treatmentBreakdown")}
         </h3>
         <div className="space-y-4">
           {sessionTypeData.map((session, index) => (

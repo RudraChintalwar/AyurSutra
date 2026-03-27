@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { 
   ShoppingCart, 
   Search, 
@@ -40,6 +41,7 @@ type Product = {
 
 export default function EmartProducts() {
   const { user, loading: authLoading } = useAuth();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -94,6 +96,26 @@ export default function EmartProducts() {
         ? prev.filter(b => b !== brand)
         : [...prev, brand]
     );
+  };
+
+  const resetFilters = () => {
+    setSelectedCategory(null);
+    setSearchTerm('');
+    setPriceRange([0, 10000]);
+    setSelectedBrands([]);
+    setPrescriptionOnly(false);
+  };
+
+  const translateCategory = (category: string) => {
+    const categoryMap: Record<string, string> = {
+      'Classical Medicines': t('emart.cat.classical'),
+      'Proprietary Formulations': t('emart.cat.proprietary'),
+      'Oils & Ghritas': t('emart.cat.oils'),
+      'Herbal Supplements': t('emart.cat.supplements'),
+      'Personal Care': t('emart.cat.personal'),
+      'Immunity Boosters': t('emart.cat.immunity'),
+    };
+    return categoryMap[category] || category;
   };
 
   const filteredProducts = products.filter(product => {
@@ -153,15 +175,15 @@ export default function EmartProducts() {
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-green-600" />
-              <span className="font-medium">Ayush Approved</span>
+              <span className="font-medium">{t("emart.ayushApproved")}</span>
             </div>
             <div className="flex items-center space-x-2">
               <Leaf className="w-4 h-4 text-primary" />
-              <span className="font-medium">100% Ayurvedic</span>
+              <span className="font-medium">{t("emart.hundredAyurvedic")}</span>
             </div>
             <div className="flex items-center space-x-2">
               <Truck className="w-4 h-4 text-accent" />
-              <span className="font-medium">Express Delivery</span>
+              <span className="font-medium">{t("emart.expressDelivery")}</span>
             </div>
           </div>
         </div>
@@ -173,15 +195,15 @@ export default function EmartProducts() {
         {/* Top Header / Search */}
         <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-playfair font-bold text-gray-900">Product Catalog</h1>
+            <h1 className="text-3xl font-playfair font-bold text-gray-900">{t("emart.productCatalog")}</h1>
             <div className="flex items-center text-sm text-muted-foreground mt-2">
-              <Link to="/emart" className="hover:text-primary transition-colors">E-Mart</Link>
+              <Link to="/emart" className="hover:text-primary transition-colors">{t("emart.title")}</Link>
               <span className="mx-2">/</span>
-              <span>All Products</span>
+              <span>{t("emart.allProducts")}</span>
               {selectedCategory && (
                 <>
                   <span className="mx-2">/</span>
-                  <span className="text-primary font-medium">{selectedCategory}</span>
+                  <span className="text-primary font-medium">{translateCategory(selectedCategory)}</span>
                 </>
               )}
             </div>
@@ -191,7 +213,7 @@ export default function EmartProducts() {
             <div className="relative flex-1 md:w-80">
               <input
                 type="text"
-                placeholder="Search remedies..."
+                placeholder={t("emart.searchRemedies")}
                 className="w-full border border-border rounded-full py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary shadow-sm bg-white"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -218,7 +240,7 @@ export default function EmartProducts() {
             <div className="bg-white rounded-2xl shadow-sm border border-border p-6 sticky top-24">
               <h3 className="font-bold text-xl mb-6 flex items-center font-playfair">
                 <Filter className="w-5 h-5 mr-3 text-primary" />
-                Filters
+                {t("emart.filters")}
               </h3>
               
               {/* Categories Filter */}
@@ -227,7 +249,7 @@ export default function EmartProducts() {
                   className="flex justify-between items-center cursor-pointer mb-3 group"
                   onClick={() => toggleFilterSection('category')}
                 >
-                  <h4 className="font-semibold group-hover:text-primary transition-colors">Categories</h4>
+                  <h4 className="font-semibold group-hover:text-primary transition-colors">{t("emart.categories")}</h4>
                   {expandedFilters.category ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
                 {expandedFilters.category && (
@@ -237,7 +259,7 @@ export default function EmartProducts() {
                       className={`flex items-center w-full py-2 px-3 rounded-xl transition-colors text-sm ${!selectedCategory ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-50'}`}
                     >
                       <Package className="w-4 h-4 mr-3" />
-                      All Categories
+                      {t("emart.allCategories")}
                     </button>
                     {/* Combine dynamic categories with our custom icons layer */}
                     {categories.map(cat => {
@@ -251,7 +273,7 @@ export default function EmartProducts() {
                           className={`flex items-center w-full py-2 px-3 rounded-xl transition-colors text-sm ${selectedCategory === cat ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-50'}`}
                         >
                           <IconComponent className={`w-4 h-4 mr-3 ${selectedCategory === cat ? 'text-primary' : iconColor}`} />
-                          <span className="text-left">{cat}</span>
+                          <span className="text-left">{translateCategory(cat)}</span>
                         </button>
                       );
                     })}
@@ -265,7 +287,7 @@ export default function EmartProducts() {
                   className="flex justify-between items-center cursor-pointer mb-3 group"
                   onClick={() => toggleFilterSection('price')}
                 >
-                  <h4 className="font-semibold group-hover:text-primary transition-colors">Price Range</h4>
+                  <h4 className="font-semibold group-hover:text-primary transition-colors">{t("emart.priceRange")}</h4>
                   {expandedFilters.price ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
                 {expandedFilters.price && (
@@ -281,7 +303,7 @@ export default function EmartProducts() {
                     />
                     <div className="flex justify-between text-xs font-semibold text-muted-foreground">
                       <span className="bg-gray-100 px-2 py-1.5 rounded-md">₹0</span>
-                      <span className="bg-primary/10 text-primary px-2 py-1.5 rounded-md">Up to ₹{priceRange[1]}</span>
+                      <span className="bg-primary/10 text-primary px-2 py-1.5 rounded-md">{t("emart.upTo")} ₹{priceRange[1]}</span>
                     </div>
                   </div>
                 )}
@@ -294,7 +316,7 @@ export default function EmartProducts() {
                     className="flex justify-between items-center cursor-pointer mb-3 group"
                     onClick={() => toggleFilterSection('brand')}
                   >
-                    <h4 className="font-semibold group-hover:text-primary transition-colors">Brands</h4>
+                    <h4 className="font-semibold group-hover:text-primary transition-colors">{t("emart.brands")}</h4>
                     {expandedFilters.brand ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                   {expandedFilters.brand && (
@@ -324,22 +346,16 @@ export default function EmartProducts() {
                     onChange={(e) => setPrescriptionOnly(e.target.checked)}
                     className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary accent-primary"
                   />
-                  <span className="text-sm font-medium group-hover:text-primary transition-colors">Vaidya Prescription Only</span>
+                  <span className="text-sm font-medium group-hover:text-primary transition-colors">{t("emart.vaidyaPrescriptionOnly")}</span>
                 </label>
               </div>
 
               {/* Clear */}
               <button 
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setSearchTerm('');
-                  setPriceRange([0, 10000]);
-                  setSelectedBrands([]);
-                  setPrescriptionOnly(false);
-                }}
+                onClick={resetFilters}
                 className="w-full bg-gray-100 text-gray-700 font-medium py-2.5 rounded-xl hover:bg-gray-200 transition-colors text-sm"
               >
-                Reset Filters
+                {t("emart.resetFilters")}
               </button>
             </div>
           </aside>
@@ -349,21 +365,21 @@ export default function EmartProducts() {
             {/* Sort Header */}
             <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-border flex flex-col sm:flex-row justify-between items-center gap-4">
               <p className="text-sm font-medium">
-                Showing <span className="font-bold text-gray-900">{sortedProducts.length}</span> products
+                {t("common.showing")} <span className="font-bold text-gray-900">{sortedProducts.length}</span> {t("emart.productsLower")}
               </p>
               <div className="flex items-center space-x-3">
-                <label htmlFor="sort" className="text-sm font-medium text-muted-foreground whitespace-nowrap">Sort by:</label>
+                <label htmlFor="sort" className="text-sm font-medium text-muted-foreground whitespace-nowrap">{t("emart.sortBy")}</label>
                 <select
                   id="sort"
                   value={sortOption}
                   onChange={e => setSortOption(e.target.value)}
                   className="bg-gray-50 border border-border rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  <option value="featured">Featured Relevance</option>
-                  <option value="price-low">Price: Low to High</option>
-                  <option value="price-high">Price: High to Low</option>
-                  <option value="name-asc">Name: A to Z</option>
-                  <option value="rating">Highest Rated</option>
+                  <option value="featured">{t("emart.sort.featured")}</option>
+                  <option value="price-low">{t("emart.sort.priceLowHigh")}</option>
+                  <option value="price-high">{t("emart.sort.priceHighLow")}</option>
+                  <option value="name-asc">{t("emart.sort.nameAZ")}</option>
+                  <option value="rating">{t("emart.sort.highestRated")}</option>
                 </select>
                 <button 
                   onClick={() => setMobileFiltersOpen(true)}
@@ -380,19 +396,13 @@ export default function EmartProducts() {
                 <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Search className="w-10 h-10 text-gray-400" />
                 </div>
-                <h3 className="text-2xl font-playfair font-bold mb-3">No Products Found</h3>
-                <p className="text-muted-foreground mb-8 max-w-md mx-auto">We couldn't find any products matching your current filters. Try removing some filters or adjusting your search.</p>
+                <h3 className="text-2xl font-playfair font-bold mb-3">{t("emart.noProductsFound")}</h3>
+                <p className="text-muted-foreground mb-8 max-w-md mx-auto">{t("emart.noProductsFoundDesc")}</p>
                 <button 
-                  onClick={() => {
-                    setSelectedCategory(null);
-                    setSearchTerm('');
-                    setPriceRange([0, 10000]);
-                    setSelectedBrands([]);
-                    setPrescriptionOnly(false);
-                  }}
+                  onClick={resetFilters}
                   className="bg-primary text-primary-foreground py-2.5 px-8 rounded-xl font-medium hover:bg-primary/90 transition-colors"
                 >
-                  Reset Filtering
+                  {t("emart.resetFiltering")}
                 </button>
               </div>
             ) : (
@@ -410,7 +420,7 @@ export default function EmartProducts() {
                         {product.prescription && (
                           <div className="absolute top-3 left-3 bg-red-100/90 text-red-700 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full flex items-center shadow-sm backdrop-blur-sm">
                             <Pill className="w-3 h-3 mr-1" />
-                            Rx Required
+                            {t("emart.rxRequired")}
                           </div>
                         )}
                         {product.discount && (
@@ -445,11 +455,11 @@ export default function EmartProducts() {
                           <div>
                             {product.discount ? (
                               <div className="flex items-baseline space-x-2">
-                                <p className="text-xl font-bold text-gray-900">₹{product.price.toLocaleString()}</p>
-                                <p className="text-sm text-muted-foreground line-through font-medium">₹{Math.round(product.price * (1 + product.discount/100)).toLocaleString()}</p>
+                                <p className="text-xl font-bold text-gray-900">₹{product.price.toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</p>
+                                <p className="text-sm text-muted-foreground line-through font-medium">₹{Math.round(product.price * (1 + product.discount/100)).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</p>
                               </div>
                             ) : (
-                               <p className="text-xl font-bold text-gray-900">₹{product.price.toLocaleString()}</p>
+                               <p className="text-xl font-bold text-gray-900">₹{product.price.toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</p>
                             )}
                           </div>
                           

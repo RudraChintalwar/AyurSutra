@@ -314,7 +314,7 @@ export default function ChatbotWidget() {
                   </div>
                   <div className="p-4 bg-white border border-slate-100 shadow-sm rounded-2xl flex items-center gap-2 rounded-bl-sm">
                     <Loader2 className="w-4 h-4 text-primary animate-spin" />
-                    <span className="text-xs text-slate-500 font-medium tracking-wide">Vaidya is thinking...</span>
+                    <span className="text-xs text-slate-500 font-medium tracking-wide">{t("chat.thinking")}</span>
                   </div>
                 </div>
               </div>
@@ -328,7 +328,7 @@ export default function ChatbotWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about dosha, herbs, Ayurveda diet..."
+                placeholder={t("chat.placeholder")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-24 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none overflow-hidden h-[52px]"
                 rows={1}
                 disabled={isLoading}
@@ -340,7 +340,7 @@ export default function ChatbotWidget() {
                 className={`absolute right-12 top-2 p-2 rounded-lg transition-all shadow-sm ${
                   isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title={voiceSupported ? (isListening ? 'Stop voice input' : 'Start voice input') : 'Voice input not supported'}
+                title={voiceSupported ? (isListening ? t("chat.stopVoiceInput") : t("chat.startVoiceInput")) : t("chat.voiceNotSupported")}
               >
                 {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
@@ -352,7 +352,7 @@ export default function ChatbotWidget() {
                 <Send className="w-4 h-4" />
               </button>
             </form>
-            <div className="text-center mt-2 flex justify-center text-[10px] text-slate-400">Powered by Groq AI</div>
+            <div className="text-center mt-2 flex justify-center text-[10px] text-slate-400">{t("chat.poweredBy")}</div>
           </div>
         </div>
       )}
@@ -360,7 +360,7 @@ export default function ChatbotWidget() {
       <button
         onClick={toggleWidget}
         className="w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.2)] hover:scale-105 transition-all duration-300 relative group"
-        aria-label="Toggle chat"
+        aria-label={t("chat.toggle")}
       >
         {isOpen ? <X className="w-6 h-6 transition-transform rotate-90" /> : <MessageSquare className="w-6 h-6 transition-transform" />}
         {!isOpen && hasUnread && (

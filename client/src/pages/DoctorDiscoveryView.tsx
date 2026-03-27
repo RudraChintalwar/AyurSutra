@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { rankDoctorsByClinicalMatch, calculateDistanceKM } from '@/lib/doctorMatching';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Calendar as CalendarIcon, MapPin, Star, User, Stethoscope, Filter, ArrowLeft, Building, ArrowRight, Clock, CheckCircle } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -27,6 +28,7 @@ const DoctorDiscoveryView = () => {
   const navigate = useNavigate();
   const { user, firebaseUser } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -315,11 +317,11 @@ const DoctorDiscoveryView = () => {
       {/* Header Context Link */}
       <div className="flex items-center space-x-4 mb-8 text-primary cursor-pointer hover:underline" onClick={() => navigate('/patient/sessions')}>
          <ArrowLeft className="w-4 h-4" />
-         <span className="font-semibold">Back to Triage Diagnostics</span>
+         <span className="font-semibold">{t("doctorDiscovery.back")}</span>
       </div>
       
       <div className="mb-8">
-        <h1 className="font-playfair text-3xl md:text-4xl text-primary font-bold">Discover Care</h1>
+        <h1 className="font-playfair text-3xl md:text-4xl text-primary font-bold">{t("doctorDiscovery.title")}</h1>
         <p className="text-muted-foreground text-sm mt-2 max-w-2xl">
            Our algorithmic mapping system has pre-selected doctors highly skilled in fulfilling your AI-assigned protocol: <span className="text-accent underline">{filters.requiredTherapy || 'Panchakarma Therapy'}</span>. Customize your constraints below.
         </p>
@@ -336,14 +338,14 @@ const DoctorDiscoveryView = () => {
         <Card className="lg:col-span-1 p-6 h-fit ayur-card sticky top-20">
           <div className="flex items-center mb-6 space-x-2 border-b pb-4">
              <Filter className="w-5 h-5 text-primary" />
-             <h2 className="text-xl font-playfair font-semibold">Preferences</h2>
+             <h2 className="text-xl font-playfair font-semibold">{t("doctorDiscovery.preferences")}</h2>
           </div>
 
           <div className="space-y-6">
              {/* Radius Filter */}
              <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                    <Label className="text-sm font-semibold text-foreground">Max Distance</Label>
+                    <Label className="text-sm font-semibold text-foreground">{t("doctorDiscovery.maxDistance")}</Label>
                     <span className="text-xs text-muted-foreground">{filters.radiusKm} km</span>
                 </div>
                 <Slider 
@@ -355,7 +357,7 @@ const DoctorDiscoveryView = () => {
 
              {/* Gender Filter */}
              <div className="space-y-3">
-                <Label className="text-sm font-semibold text-foreground">Physician Gender</Label>
+                <Label className="text-sm font-semibold text-foreground">{t("doctorDiscovery.physicianGender")}</Label>
                 <div className="flex space-x-2">
                     {['Any', 'Male', 'Female'].map(g => (
                         <Badge 
@@ -372,7 +374,7 @@ const DoctorDiscoveryView = () => {
 
              {/* Implicit Triage Display */}
              <div className="mt-8 p-4 bg-primary/5 rounded border border-primary/20">
-                <div className="text-xs text-primary font-semibold mb-2">CRITICAL REQUIREMENT</div>
+                <div className="text-xs text-primary font-semibold mb-2">{t("doctorDiscovery.criticalRequirement")}</div>
                 <Badge variant="outline" className="w-full justify-center border-accent text-accent bg-accent/5">
                    {filters.requiredTherapy} Capability
                 </Badge>
@@ -385,12 +387,12 @@ const DoctorDiscoveryView = () => {
             {loading ? (
                 <div className="flex flex-col items-center justify-center p-24 text-primary">
                    <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4" />
-                   <p className="font-playfair text-xl">Connecting with clinics...</p>
+                   <p className="font-playfair text-xl">{t("doctorDiscovery.connectingClinics")}</p>
                 </div>
             ) : doctors.length === 0 ? (
                 <Card className="p-16 text-center ayur-card border-dashed">
                     <Stethoscope className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-                    <h3 className="text-2xl font-playfair mb-2">No Matching Physicians Found</h3>
+                    <h3 className="text-2xl font-playfair mb-2">{t("doctorDiscovery.noMatches")}</h3>
                     <p className="text-muted-foreground max-w-md mx-auto">
                         We could not find any clinics within {filters.radiusKm}km specialized in {filters.requiredTherapy}. Try expanding your search radius.
                     </p>
@@ -446,7 +448,7 @@ const DoctorDiscoveryView = () => {
                                     className="w-full ayur-button-accent rounded-md" 
                                     onClick={() => handleOpenSlotModal(doc)}
                                 >
-                                  <>Select Slots <ArrowRight className="w-3 h-3 ml-2" /></>
+                                  <>{t("doctorDiscovery.selectSlots")} <ArrowRight className="w-3 h-3 ml-2" /></>
                                 </Button>
                             </div>
                         </Card>
@@ -460,7 +462,7 @@ const DoctorDiscoveryView = () => {
       <Dialog open={showSlotModal} onOpenChange={setShowSlotModal}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-playfair text-2xl text-primary">Select Appointment Slots</DialogTitle>
+            <DialogTitle className="font-playfair text-2xl text-primary">{t("doctorDiscovery.selectAppointmentSlots")}</DialogTitle>
             <DialogDescription>
               Choose convenient dates and times from {selectedDoctor?.name}'s schedule for your {filters.requiredTherapy || 'therapy'}.
             </DialogDescription>
@@ -530,7 +532,7 @@ const DoctorDiscoveryView = () => {
                 ) : (
                   <div className="p-8 text-center border rounded-lg bg-gray-50 flex border-dashed flex-col items-center">
                     <CalendarIcon className="w-8 h-8 text-gray-300 mb-2" />
-                    <p className="text-sm text-gray-500">No slots available on this date.</p>
+                    <p className="text-sm text-gray-500">{t("doctorDiscovery.noSlotsDate")}</p>
                   </div>
                 )}
 

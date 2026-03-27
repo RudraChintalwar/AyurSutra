@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface QuickActionsProps {
@@ -51,6 +52,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
 }) => {
   const navigate = useNavigate();
   const { role } = useAuth();
+  const { t } = useLanguage();
   const { toast } = useToast();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -61,8 +63,8 @@ const QuickActions: React.FC<QuickActionsProps> = ({
     switch (action) {
       case 'schedule':
         toast({
-          title: "Opening Scheduler",
-          description: "Loading appointment booking system...",
+          title: t("quick.openingScheduler"),
+          description: t("quick.loadingBooking"),
         });
         if (role === 'patient') {
           navigate('/patient/sessions');
@@ -73,16 +75,16 @@ const QuickActions: React.FC<QuickActionsProps> = ({
         
       case 'message':
         toast({
-          title: "Opening Messages",
-          description: "Loading communication center...",
+          title: t("quick.openingMessages"),
+          description: t("quick.loadingCommunication"),
         });
         navigate(`/${role}/messages`);
         break;
         
       case 'records':
         toast({
-          title: "Accessing Records",
-          description: "Loading medical records...",
+          title: t("quick.accessingRecords"),
+          description: t("quick.loadingMedicalRecords"),
         });
         if (role === 'patient') {
           navigate('/patient/records');
@@ -93,23 +95,23 @@ const QuickActions: React.FC<QuickActionsProps> = ({
         
       case 'emergency':
         toast({
-          title: "Emergency Protocol Activated",
-          description: "Connecting to emergency services...",
+          title: t("quick.emergencyActivated"),
+          description: t("quick.connectingEmergency"),
           variant: "destructive",
         });
         break;
         
       case 'video-call':
         toast({
-          title: "Starting Video Call",
-          description: "Connecting to telehealth platform...",
+          title: t("quick.startingVideoCall"),
+          description: t("quick.connectingTelehealth"),
         });
         break;
         
       default:
         toast({
           title: label,
-          description: `${label} action triggered successfully`,
+          description: t("quick.actionTriggered", { label }),
         });
     }
   };
@@ -117,35 +119,35 @@ const QuickActions: React.FC<QuickActionsProps> = ({
   const patientActions = [
     { 
       id: 'schedule', 
-      label: 'Schedule Session', 
+      label: t("quick.scheduleSession"), 
       icon: <Calendar className="w-4 h-4" />, 
       color: 'bg-primary text-primary-foreground',
       urgent: false
     },
     { 
       id: 'message', 
-      label: 'Message Doctor', 
+      label: t("quick.messageDoctor"), 
       icon: <MessageSquare className="w-4 h-4" />, 
       color: 'bg-blue-500 text-white',
       urgent: false
     },
     { 
       id: 'records', 
-      label: 'View Records', 
+      label: t("quick.viewRecords"), 
       icon: <FileText className="w-4 h-4" />, 
       color: 'bg-green-500 text-white',
       urgent: false
     },
     { 
       id: 'video-call', 
-      label: 'Video Consultation', 
+      label: t("quick.videoConsultation"), 
       icon: <Video className="w-4 h-4" />, 
       color: 'bg-purple-500 text-white',
       urgent: false
     },
     { 
       id: 'emergency', 
-      label: 'Emergency Help', 
+      label: t("quick.emergencyHelp"), 
       icon: <Phone className="w-4 h-4" />, 
       color: 'bg-red-500 text-white animate-pulse',
       urgent: true
@@ -155,35 +157,35 @@ const QuickActions: React.FC<QuickActionsProps> = ({
   const doctorActions = [
     { 
       id: 'schedule', 
-      label: 'Schedule Patient', 
+      label: t("quick.schedulePatient"), 
       icon: <Calendar className="w-4 h-4" />, 
       color: 'bg-primary text-primary-foreground',
       urgent: false
     },
     { 
       id: 'add-patient', 
-      label: 'Add Patient', 
+      label: t("quick.addPatient"), 
       icon: <Users className="w-4 h-4" />, 
       color: 'bg-accent text-accent-foreground',
       urgent: false
     },
     { 
       id: 'message', 
-      label: 'Send Message', 
+      label: t("quick.sendMessage"), 
       icon: <MessageSquare className="w-4 h-4" />, 
       color: 'bg-blue-500 text-white',
       urgent: false
     },
     { 
       id: 'records', 
-      label: 'Patient Records', 
+      label: t("quick.patientRecords"), 
       icon: <FileText className="w-4 h-4" />, 
       color: 'bg-green-500 text-white',
       urgent: false
     },
     { 
       id: 'emergency', 
-      label: 'Emergency Alert', 
+      label: t("quick.emergencyAlert"), 
       icon: <Bell className="w-4 h-4" />, 
       color: 'bg-red-500 text-white animate-pulse',
       urgent: true
@@ -248,7 +250,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
-                <p>{isExpanded ? 'Close menu' : 'Quick actions'}</p>
+                <p>{isExpanded ? t("quick.closeMenu") : t("quick.quickActions")}</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -262,7 +264,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
       <Card className={`p-4 ${className}`}>
         <h4 className="font-medium text-sm text-muted-foreground mb-3 flex items-center">
           <Zap className="w-4 h-4 mr-2" />
-          Quick Actions
+          {t("quick.quickActions")}
         </h4>
         <div className="space-y-2">
           {actions.map((action) => (
@@ -307,7 +309,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>More Actions</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("quick.moreActions")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             
             {regularActions.slice(3).map((action) => (
@@ -324,7 +326,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
             {urgentActions.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-red-600">Emergency</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-red-600">{t("quick.emergency")}</DropdownMenuLabel>
                 {urgentActions.map((action) => (
                   <DropdownMenuItem
                     key={action.id}

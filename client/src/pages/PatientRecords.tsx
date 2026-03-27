@@ -26,9 +26,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PatientRecords = () => {
   const { user } = useAuth();
+  const { t, language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [patientSessions, setPatientSessions] = useState<any[]>([]);
@@ -114,7 +116,7 @@ const PatientRecords = () => {
   );
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
+    return new Date(dateString).toLocaleDateString(language === "hi" ? 'hi-IN' : 'en-IN', {
       day: 'numeric',
       month: 'long',
       year: 'numeric'
@@ -127,15 +129,15 @@ const PatientRecords = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Medical Records
+            {t("patientRecords.title")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Your complete health history and treatment records
+            {t("patientRecords.subtitle")}
           </p>
         </div>
         <Button className="ayur-button-accent">
           <Download className="w-4 h-4 mr-2" />
-          Export Records
+          {t("patientRecords.export")}
         </Button>
       </div>
 
@@ -153,33 +155,33 @@ const PatientRecords = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-playfair text-2xl font-semibold">{currentPatient?.name}</h2>
-                <p className="text-muted-foreground">Patient ID: {user?.uid?.slice(0, 8) || 'N/A'}</p>
+                <p className="text-muted-foreground">{t("patient.patientId", { id: user?.uid?.slice(0, 8) || 'N/A' })}</p>
               </div>
               <Badge className="dosha-vata px-3 py-1">
-                {currentPatient?.dosha} Constitution
+                {t("patient.constitution", { dosha: currentPatient?.dosha || "" })}
               </Badge>
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-primary/5 rounded-lg">
                 <div className="text-lg font-bold text-primary">{patientSessions.length}</div>
-                <div className="text-sm text-muted-foreground">Total Sessions</div>
+                <div className="text-sm text-muted-foreground">{t("patient.totalSessions")}</div>
               </div>
               <div className="text-center p-3 bg-green-100 rounded-lg">
                 <div className="text-lg font-bold text-green-600">
                   {patientSessions.filter(s => s.status === 'completed').length}
                 </div>
-                <div className="text-sm text-muted-foreground">Completed</div>
+                <div className="text-sm text-muted-foreground">{t("patient.completed")}</div>
               </div>
               <div className="text-center p-3 bg-accent/5 rounded-lg">
                 <div className="text-lg font-bold text-accent">{patientSessions.length > 0 ? Math.min(Math.round((completedCount / (currentPatient?.llm_recommendation?.sessions_recommended || 5)) * 100), 100) : 0}%</div>
-                <div className="text-sm text-muted-foreground">Recovery Rate</div>
+                <div className="text-sm text-muted-foreground">{language === "hi" ? "रिकवरी दर" : "Recovery Rate"}</div>
               </div>
               <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
                 <div className="text-lg font-bold text-ayur-soft-gold">
                   {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
                 </div>
-                <div className="text-sm text-muted-foreground">Health Score</div>
+                <div className="text-sm text-muted-foreground">{language === "hi" ? "स्वास्थ्य स्कोर" : "Health Score"}</div>
               </div>
             </div>
           </div>
@@ -227,11 +229,11 @@ const PatientRecords = () => {
           <div className="grid grid-cols-2 gap-4 text-center">
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-1 bg-primary rounded"></div>
-              <span className="text-sm">Vitality</span>
+              <span className="text-sm">{t("patientRecords.vitality")}</span>
             </div>
             <div className="flex items-center justify-center space-x-2">
               <div className="w-4 h-1 bg-accent rounded"></div>
-              <span className="text-sm">Overall Score</span>
+              <span className="text-sm">{t("patientRecords.overallScore")}</span>
             </div>
           </div>
         </div>
@@ -239,22 +241,22 @@ const PatientRecords = () => {
 
       <Tabs defaultValue="records" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="records">Medical Records</TabsTrigger>
-          <TabsTrigger value="vitals">Vital Signs</TabsTrigger>
-          <TabsTrigger value="medications">Treatments</TabsTrigger>
-          <TabsTrigger value="reports">Lab Reports</TabsTrigger>
+          <TabsTrigger value="records">{t("patientRecords.title")}</TabsTrigger>
+          <TabsTrigger value="vitals">{t("patientRecords.vitalSigns")}</TabsTrigger>
+          <TabsTrigger value="medications">{t("patientRecords.treatments")}</TabsTrigger>
+          <TabsTrigger value="reports">{t("patientRecords.labReports")}</TabsTrigger>
         </TabsList>
 
         {/* Medical Records */}
         <TabsContent value="records" className="space-y-6">
           <Card className="ayur-card p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-playfair text-xl font-semibold">Medical Records</h3>
+              <h3 className="font-playfair text-xl font-semibold">{t("patientRecords.title")}</h3>
               <div className="flex items-center space-x-2">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search records..."
+                    placeholder={t("patientRecords.searchRecords")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 w-64"
@@ -314,7 +316,7 @@ const PatientRecords = () => {
                     
                     <Button variant="ghost" size="sm">
                       <FileText className="w-4 h-4 mr-2" />
-                      View
+                      {t("patientRecords.view")}
                     </Button>
                   </div>
                 </div>
@@ -329,7 +331,7 @@ const PatientRecords = () => {
             <Card className="ayur-card p-6">
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Activity className="w-5 h-5 mr-2 text-primary" />
-                Current Vitals
+                {t("patientRecords.currentVitals")}
               </h3>
               
               <div className="space-y-4">
@@ -339,13 +341,13 @@ const PatientRecords = () => {
                       <Heart className="w-5 h-5 text-red-600" />
                     </div>
                     <div>
-                      <div className="font-medium">Blood Pressure</div>
-                      <div className="text-sm text-muted-foreground">Last recorded</div>
+                      <div className="font-medium">{t("patientRecords.bloodPressure")}</div>
+                      <div className="text-sm text-muted-foreground">{t("patientRecords.lastRecorded")}</div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">120/80</div>
-                    <div className="text-sm text-green-600">Normal</div>
+                    <div className="text-sm text-green-600">{t("patientRecords.normal")}</div>
                   </div>
                 </div>
 
@@ -355,13 +357,13 @@ const PatientRecords = () => {
                       <Activity className="w-5 h-5 text-blue-600" />
                     </div>
                     <div>
-                      <div className="font-medium">Heart Rate</div>
-                      <div className="text-sm text-muted-foreground">Resting BPM</div>
+                      <div className="font-medium">{t("patientRecords.heartRate")}</div>
+                      <div className="text-sm text-muted-foreground">{t("patientRecords.restingBpm")}</div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">72 BPM</div>
-                    <div className="text-sm text-green-600">Normal</div>
+                    <div className="text-sm text-green-600">{t("patientRecords.normal")}</div>
                   </div>
                 </div>
 
@@ -371,25 +373,25 @@ const PatientRecords = () => {
                       <TrendingUp className="w-5 h-5 text-green-600" />
                     </div>
                     <div>
-                      <div className="font-medium">Temperature</div>
-                      <div className="text-sm text-muted-foreground">Body temperature</div>
+                      <div className="font-medium">{t("patientRecords.temperature")}</div>
+                      <div className="text-sm text-muted-foreground">{t("patientRecords.bodyTemperature")}</div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">98.6°F</div>
-                    <div className="text-sm text-green-600">Normal</div>
+                    <div className="text-sm text-green-600">{t("patientRecords.normal")}</div>
                   </div>
                 </div>
               </div>
             </Card>
 
             <Card className="ayur-card p-6">
-              <h3 className="font-playfair text-xl font-semibold mb-4">Vital Trends</h3>
+              <h3 className="font-playfair text-xl font-semibold mb-4">{t("patientRecords.vitalTrends")}</h3>
               
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Blood Pressure Stability</span>
+                    <span className="text-sm font-medium">{t("patientRecords.bpStability")}</span>
                     <span className="text-sm text-green-600">95%</span>
                   </div>
                   <Progress value={95} className="h-2" />
@@ -397,7 +399,7 @@ const PatientRecords = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Heart Rate Variability</span>
+                    <span className="text-sm font-medium">{t("patientRecords.hrVariability")}</span>
                     <span className="text-sm text-green-600">88%</span>
                   </div>
                   <Progress value={88} className="h-2" />
@@ -405,7 +407,7 @@ const PatientRecords = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Sleep Quality</span>
+                    <span className="text-sm font-medium">{t("patientRecords.sleepQuality")}</span>
                     <span className="text-sm text-accent">78%</span>
                   </div>
                   <Progress value={78} className="h-2" />
@@ -413,8 +415,8 @@ const PatientRecords = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Stress Levels</span>
-                    <span className="text-sm text-muted-foreground">Low</span>
+                    <span className="text-sm font-medium">{t("patientRecords.stressLevels")}</span>
+                    <span className="text-sm text-muted-foreground">{t("patientRecords.low")}</span>
                   </div>
                   <Progress value={25} className="h-2" />
                 </div>
@@ -428,20 +430,20 @@ const PatientRecords = () => {
           <Card className="ayur-card p-6">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Pill className="w-5 h-5 mr-2 text-primary" />
-              Current Treatments & Medications
+              {t("patientRecords.currentTreatments")}
             </h3>
             
             <div className="space-y-4">
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h4 className="font-semibold">Basti (Medicated Enema)</h4>
+                    <h4 className="font-semibold">{t("patientRecords.basti")}</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Primary Panchakarma treatment for Vata imbalance
                     </p>
                     <div className="flex items-center space-x-4 mt-2 text-sm">
-                      <span className="text-muted-foreground">Frequency: Every 3 days</span>
-                      <span className="text-muted-foreground">Duration: 5 sessions</span>
+                      <span className="text-muted-foreground">{t("patientRecords.frequency")}: {language === "hi" ? "हर 3 दिन" : "Every 3 days"}</span>
+                      <span className="text-muted-foreground">{t("patientRecords.duration")}: 5 {language === "hi" ? "सत्र" : "sessions"}</span>
                     </div>
                   </div>
                   <Badge className="bg-primary/10 text-primary">
@@ -453,13 +455,13 @@ const PatientRecords = () => {
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h4 className="font-semibold">Herbal Tea Blend</h4>
+                    <h4 className="font-semibold">{t("patientRecords.herbalTea")}</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Calming herbs for improved sleep and digestion
                     </p>
                     <div className="flex items-center space-x-4 mt-2 text-sm">
-                      <span className="text-muted-foreground">Dosage: 2 cups daily</span>
-                      <span className="text-muted-foreground">With meals</span>
+                      <span className="text-muted-foreground">{t("patientRecords.dosage")}: {language === "hi" ? "2 कप रोज़" : "2 cups daily"}</span>
+                      <span className="text-muted-foreground">{t("patientRecords.withMeals")}</span>
                     </div>
                   </div>
                   <Badge className="bg-green-100 text-green-700 border-green-200">
@@ -471,13 +473,13 @@ const PatientRecords = () => {
               <div className="p-4 border border-border rounded-lg opacity-60">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h4 className="font-semibold">Warm Oil Massage</h4>
+                    <h4 className="font-semibold">{t("patientRecords.warmOilMassage")}</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Self-administered daily oil massage for joint relief
                     </p>
                     <div className="flex items-center space-x-4 mt-2 text-sm">
-                      <span className="text-muted-foreground">Frequency: Daily</span>
-                      <span className="text-muted-foreground">Before bath</span>
+                      <span className="text-muted-foreground">{t("patientRecords.frequency")}: {language === "hi" ? "दैनिक" : "Daily"}</span>
+                      <span className="text-muted-foreground">{t("patientRecords.beforeBath")}</span>
                     </div>
                   </div>
                   <Badge variant="outline">
@@ -500,22 +502,22 @@ const PatientRecords = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold">Complete Blood Count</h4>
+                  <h4 className="font-semibold">{t("patientRecords.completeBloodCount")}</h4>
                   <Badge className="bg-green-100 text-green-700 border-green-200">
                     Normal
                   </Badge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Hemoglobin</span>
+                    <span className="text-muted-foreground">{t("patientRecords.hemoglobin")}</span>
                     <span>12.5 g/dL</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">WBC Count</span>
+                    <span className="text-muted-foreground">{t("patientRecords.wbcCount")}</span>
                     <span>6,800/μL</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Platelet Count</span>
+                    <span className="text-muted-foreground">{t("patientRecords.plateletCount")}</span>
                     <span>250,000/μL</span>
                   </div>
                 </div>
@@ -526,22 +528,22 @@ const PatientRecords = () => {
 
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold">Metabolic Panel</h4>
+                  <h4 className="font-semibold">{t("patientRecords.metabolicPanel")}</h4>
                   <Badge className="bg-green-100 text-green-700 border-green-200">
                     Normal
                   </Badge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Blood Sugar</span>
+                    <span className="text-muted-foreground">{t("patientRecords.bloodSugar")}</span>
                     <span>95 mg/dL</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cholesterol</span>
+                    <span className="text-muted-foreground">{t("patientRecords.cholesterol")}</span>
                     <span>180 mg/dL</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Creatinine</span>
+                    <span className="text-muted-foreground">{t("patientRecords.creatinine")}</span>
                     <span>0.9 mg/dL</span>
                   </div>
                 </div>
@@ -555,7 +557,7 @@ const PatientRecords = () => {
               <div className="flex items-start space-x-3">
                 <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                 <div>
-                  <h4 className="font-semibold text-green-800">All Clear</h4>
+                  <h4 className="font-semibold text-green-800">{t("patientRecords.allClear")}</h4>
                   <p className="text-sm text-green-700 mt-1">
                     Your latest lab results show all values within normal ranges. 
                     Continue with your current treatment plan.

@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Truck, Stethoscope, FileText, HeartPulse, ArrowRight, ShoppingCart, Leaf } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const EmartHome = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,33 +17,33 @@ const EmartHome = () => {
   const features = [
     {
       icon: <Leaf className="w-8 h-8 text-ayur-green" />,
-      title: "1000+ Ayurvedic Products",
-      description: "Comprehensive range of classical and proprietary medicines"
+      titleKey: "emart.home.feature.products.title",
+      descriptionKey: "emart.home.feature.products.desc"
     },
     {
       icon: <Shield className="w-8 h-8 text-ayur-gold" />,
-      title: "100% Authentic",
-      description: "Verified products from licensed pharmacies and brands"
+      titleKey: "emart.home.feature.authentic.title",
+      descriptionKey: "emart.home.feature.authentic.desc"
     },
     {
       icon: <Truck className="w-8 h-8 text-green-600" />,
-      title: "Fast Delivery",
-      description: "Get your essentials delivered to your doorstep quickly"
+      titleKey: "emart.home.feature.delivery.title",
+      descriptionKey: "emart.home.feature.delivery.desc"
     },
     {
       icon: <Stethoscope className="w-8 h-8 text-ayur-red" />,
-      title: "Vaidya Consultations",
-      description: "Connect with certified Ayurvedic practitioners instantly"
+      titleKey: "emart.home.feature.consult.title",
+      descriptionKey: "emart.home.feature.consult.desc"
     },
     {
       icon: <FileText className="w-8 h-8 text-blue-600" />,
-      title: "Prescription Management",
-      description: "Upload, store and refill prescriptions easily"
+      titleKey: "emart.home.feature.prescription.title",
+      descriptionKey: "emart.home.feature.prescription.desc"
     },
     {
       icon: <HeartPulse className="w-8 h-8 text-pink-600" />,
-      title: "Holistic Wellness",
-      description: "Personalized health plans and dosha-based recommendations"
+      titleKey: "emart.home.feature.wellness.title",
+      descriptionKey: "emart.home.feature.wellness.desc"
     }
   ];
 
@@ -66,7 +68,7 @@ const EmartHome = () => {
           >
             <div className="flex items-center space-x-3">
               <Leaf className="w-16 h-16 text-white animate-pulse" />
-              <h1 className="text-4xl font-playfair font-bold text-white">AyurVeda Mart</h1>
+              <h1 className="text-4xl font-playfair font-bold text-white">{t("emart.brandName")}</h1>
             </div>
           </motion.div>
         </motion.div>
@@ -122,13 +124,11 @@ const EmartHome = () => {
                   <Leaf className="w-10 h-10" />
                 </div>
               </div>
-              <h1 className="text-4xl sm:text-6xl font-playfair font-bold text-gray-900 mb-6 leading-tight">
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
-                  AyurVeda
-                </span> Mart
+              <h1 className="text-4xl sm:text-6xl font-playfair font-bold text-gray-900 mb-6 leading-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
+                {t("emart.brandName")}
               </h1>
               <p className="text-xl sm:text-2xl max-w-3xl mx-auto text-gray-700 mb-10 font-inter">
-                Your <span className="font-semibold text-primary">trusted</span> digital Ayurvedic marketplace for <span className="font-semibold text-accent">authentic</span> formulations and wellness products.
+                {t("emart.home.heroDesc")}
               </p>
 
               <div className="flex flex-col sm:flex-row justify-center gap-4 mt-8">
@@ -139,7 +139,7 @@ const EmartHome = () => {
                   className="px-8 py-4 bg-gradient-to-r from-primary to-accent text-primary-foreground rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center space-x-2"
                 >
                   <ShoppingCart className="w-5 h-5" />
-                  <span>Start Shopping</span>
+                  <span>{t("emart.home.startShopping")}</span>
                 </motion.button>
               </div>
             </motion.div>
@@ -155,13 +155,13 @@ const EmartHome = () => {
                 viewport={{ once: true }}
                 className="text-3xl sm:text-5xl font-playfair font-bold text-center text-gray-900 mb-16"
               >
-                Why <span className="text-primary">AyurVeda Mart</span>?
+                {t("emart.home.why")} <span className="text-primary">{t("emart.brandName")}</span>?
               </motion.h2>
               
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
                 {features.map((feature, index) => (
                   <motion.div
-                    key={feature.title}
+                    key={feature.titleKey}
                     initial={{ y: 50, opacity: 0 }}
                     whileInView={{ y: 0, opacity: 1 }}
                     transition={{ duration: 0.5, delay: index * 0.1 }}
@@ -172,9 +172,9 @@ const EmartHome = () => {
                       <div className="p-3 rounded-full bg-primary/10 mr-4">
                         {feature.icon}
                       </div>
-                      <h3 className="text-xl font-bold font-playfair text-gray-900">{feature.title}</h3>
+                      <h3 className="text-xl font-bold font-playfair text-gray-900">{t(feature.titleKey)}</h3>
                     </div>
-                    <p className="text-muted-foreground">{feature.description}</p>
+                    <p className="text-muted-foreground">{t(feature.descriptionKey)}</p>
                   </motion.div>
                 ))}
               </div>
@@ -191,7 +191,7 @@ const EmartHome = () => {
                 viewport={{ once: true }}
                 className="text-3xl sm:text-4xl font-playfair font-bold mb-6"
               >
-                Ready to Restore Your Natural Balance?
+                {t("emart.home.ctaTitle")}
               </motion.h2>
               <motion.p
                 initial={{ y: 30, opacity: 0 }}
@@ -200,7 +200,7 @@ const EmartHome = () => {
                 viewport={{ once: true }}
                 className="text-xl mb-8 opacity-90"
               >
-                Discover ancient wisdom through our curated collection of verified Ayurvedic remedies.
+                {t("emart.home.ctaDesc")}
               </motion.p>
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
@@ -212,7 +212,7 @@ const EmartHome = () => {
                   onClick={() => navigate('/emart/products')}
                   className="px-8 py-4 bg-white text-primary rounded-xl font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105"
                 >
-                  Browse Catalog
+                  {t("emart.home.browseCatalog")}
                 </button>
               </motion.div>
             </div>

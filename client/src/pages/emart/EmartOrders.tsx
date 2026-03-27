@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { collection, query, where, getDocs, updateDoc, doc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type OrderItem = {
   id: string;
@@ -38,6 +39,7 @@ type Order = {
 
 export default function EmartOrders() {
   const { user, loading: authLoading } = useAuth();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export default function EmartOrders() {
           setOrders(ordersData);
         } catch (error) {
           console.error("Error fetching orders:", error);
-          toast.error("Failed to load orders");
+          toast.error(t("emart.orders.failedLoad"));
         } finally {
           setLoading(false);
         }
@@ -86,7 +88,7 @@ export default function EmartOrders() {
   }, [user?.uid]);
 
   const handleCancelOrder = async (orderId: string) => {
-    if (!confirm("Are you sure you want to cancel this order?")) return;
+    if (!confirm(t("emart.orders.cancelConfirm"))) return;
 
     try {
       await updateDoc(doc(db, "orders", orderId), {
@@ -95,10 +97,10 @@ export default function EmartOrders() {
       setOrders(orders.map(order => 
         order.id === orderId ? { ...order, status: "cancelled" } : order
       ));
-      toast.success("Order cancelled successfully");
+      toast.success(t("emart.orders.cancelledSuccess"));
     } catch (error) {
       console.error("Error cancelling order:", error);
-      toast.error("Failed to cancel order");
+      toast.error(t("emart.orders.cancelledFail"));
     }
   };
 
@@ -109,7 +111,7 @@ export default function EmartOrders() {
     } else if (dateString) {
         dateObj = new Date(dateString);
     } else {
-        return "Unknown Date";
+        return t("common.unknown");
     }
 
     const options: Intl.DateTimeFormatOptions = { 
@@ -119,19 +121,19 @@ export default function EmartOrders() {
       hour: '2-digit',
       minute: '2-digit'
     };
-    return dateObj.toLocaleDateString('en-IN', options);
+    return dateObj.toLocaleDateString(language === "hi" ? "hi-IN" : "en-IN", options);
   };
 
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
       case 'delivered':
-        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-green-100 text-green-800 border border-green-200">Delivered</span>;
+        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-green-100 text-green-800 border border-green-200">{t("emart.statusDelivered")}</span>;
       case 'cancelled':
-        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">Cancelled</span>;
+        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">{t("emart.statusCancelled")}</span>;
       case 'shipped':
-        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">Shipped</span>;
+        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">{t("emart.statusShipped")}</span>;
       default:
-        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200">Processing</span>;
+        return <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200">{t("common.processing")}</span>;
     }
   };
 
@@ -149,14 +151,14 @@ export default function EmartOrders() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold font-playfair text-gray-900 flex items-center">
             <ShoppingBag className="w-8 h-8 mr-3 text-primary" />
-            My Orders
+            {t("emart.orders.myOrders")}
           </h1>
           <button 
             onClick={() => navigate('/emart/products')}
             className="flex items-center text-muted-foreground hover:text-primary transition-colors font-medium text-sm"
           >
             <ChevronLeft className="w-4 h-4 mr-1" />
-            Continue Shopping
+            {t("emart.cart.continueShopping")}
           </button>
         </div>
 
@@ -165,13 +167,13 @@ export default function EmartOrders() {
             <div className="mx-auto w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mb-6 border border-border">
               <Package className="w-10 h-10 text-gray-400" />
             </div>
-            <h2 className="text-2xl font-bold font-playfair text-gray-900 mb-3">No Orders Found</h2>
-            <p className="text-muted-foreground mb-8">You haven't placed any orders with AyurVeda Mart yet.</p>
+            <h2 className="text-2xl font-bold font-playfair text-gray-900 mb-3">{t("emart.orders.noneTitle")}</h2>
+            <p className="text-muted-foreground mb-8">{t("emart.orders.noneDesc")}</p>
             <Link 
               to="/emart/products" 
               className="inline-block bg-primary text-primary-foreground px-8 py-3.5 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-sm"
             >
-              Start Shopping
+              {t("emart.home.startShopping")}
             </Link>
           </div>
         ) : (
@@ -195,13 +197,13 @@ export default function EmartOrders() {
                         </div>
                         <p className="text-sm text-muted-foreground font-medium flex items-center">
                           <Calendar className="w-3.5 h-3.5 mr-1.5" />
-                          Placed on {formatDate(undefined, order.createdAt)}
+                          {t("emart.orders.placedOn")} {formatDate(undefined, order.createdAt)}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold font-playfair text-gray-900">₹{order.total.toLocaleString()}</p>
+                        <p className="text-2xl font-bold font-playfair text-gray-900">₹{order.total.toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</p>
                         <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mt-1">
-                          {order.items.reduce((sum, item) => sum + item.quantity, 0)} Items
+                          {order.items.reduce((sum, item) => sum + item.quantity, 0)} {t("emart.cart.items")}
                         </p>
                       </div>
                     </div>
@@ -211,15 +213,15 @@ export default function EmartOrders() {
                       <div className="bg-gray-50/50 p-5 rounded-xl border border-border">
                         <h4 className="font-semibold text-gray-900 mb-4 flex items-center text-sm uppercase tracking-wider">
                           <Truck className="w-4 h-4 mr-2 text-primary" />
-                          Delivery Information
+                          {t("emart.checkout.deliveryInfo")}
                         </h4>
                         <div className="space-y-3">
                           <p className="text-sm text-gray-700 leading-relaxed">
-                            <span className="block text-xs font-bold text-muted-foreground uppercase mb-1">Address</span>
+                            <span className="block text-xs font-bold text-muted-foreground uppercase mb-1">{t("emart.orders.address")}</span>
                             {order.address}
                           </p>
                           <p className="text-sm text-gray-700">
-                            <span className="block text-xs font-bold text-muted-foreground uppercase mb-1">Contact</span>
+                            <span className="block text-xs font-bold text-muted-foreground uppercase mb-1">{t("doctorDashboard.contact")}</span>
                             {order.phone}
                           </p>
                         </div>
@@ -228,28 +230,28 @@ export default function EmartOrders() {
                       <div className="bg-gray-50/50 p-5 rounded-xl border border-border">
                         <h4 className="font-semibold text-gray-900 mb-4 flex items-center text-sm uppercase tracking-wider">
                           <Calendar className="w-4 h-4 mr-2 text-primary" />
-                          Status Tracking
+                          {t("emart.orders.statusTracking")}
                         </h4>
                         {order.status === 'cancelled' ? (
                           <div className="flex items-start text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
                             <XCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
-                            <p className="text-sm font-medium leading-relaxed">This order was cancelled and will not be delivered.</p>
+                            <p className="text-sm font-medium leading-relaxed">{t("emart.orders.cancelledInfo")}</p>
                           </div>
                         ) : order.status === 'delivered' ? (
                           <div className="flex items-start text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
                             <CheckCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
-                            <p className="text-sm font-medium leading-relaxed">Package delivered successfully.</p>
+                            <p className="text-sm font-medium leading-relaxed">{t("emart.orders.deliveredInfo")}</p>
                           </div>
                         ) : (
                           <div>
-                            <p className="text-sm font-semibold text-gray-900 mb-1">Expected Delivery</p>
+                            <p className="text-sm font-semibold text-gray-900 mb-1">{t("emart.orders.expectedDelivery")}</p>
                             <p className="text-primary font-bold mb-3">{formatDate(order.deliveryDate)}</p>
                             <p className={`text-xs font-medium px-2.5 py-1 w-fit rounded ${
                               daysDifference > 0 ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-orange-50 text-orange-700 border border-orange-100'
                             }`}>
                               {daysDifference > 0 
-                                ? `${daysDifference} days remaining` 
-                                : 'Arriving today'}
+                                ? t("emart.orders.daysRemaining", { days: daysDifference })
+                                : t("emart.orders.arrivingToday")}
                             </p>
                           </div>
                         )}
@@ -258,7 +260,7 @@ export default function EmartOrders() {
 
                     {/* Items */}
                     <div>
-                      <h4 className="font-bold text-gray-900 mb-4">Items Ordered</h4>
+                      <h4 className="font-bold text-gray-900 mb-4">{t("emart.orders.itemsOrdered")}</h4>
                       <div className="space-y-4">
                         {order.items.map(item => (
                           <div key={item.id} className="flex items-center bg-white border border-border p-4 rounded-xl">
@@ -271,10 +273,10 @@ export default function EmartOrders() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-semibold text-sm text-gray-900 mb-1 line-clamp-1">{item.name}</h3>
-                              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Qty: {item.quantity}</p>
+                              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{t("emart.cart.qty")} {item.quantity}</p>
                             </div>
                             <div className="font-bold text-gray-900">
-                              ₹{(item.price * item.quantity).toLocaleString()}
+                              ₹{(item.price * item.quantity).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}
                             </div>
                           </div>
                         ))}
@@ -288,7 +290,7 @@ export default function EmartOrders() {
                           className="px-5 py-2.5 rounded-xl flex items-center bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-50 hover:border-red-300 transition-colors text-sm shadow-sm"
                         >
                           <X className="w-4 h-4 mr-2" />
-                          Cancel Order
+                          {t("emart.orders.cancelOrder")}
                         </button>
                       </div>
                     )}

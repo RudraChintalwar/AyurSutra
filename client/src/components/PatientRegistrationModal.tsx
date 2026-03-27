@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { UserPlus, User, Phone, Mail, MapPin, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PatientRegistrationModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
     currentMedications: '',
   });
   const { toast } = useToast();
+  const { t, language } = useLanguage();
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -37,16 +39,16 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
   const handleSubmit = () => {
     if (!formData.name || !formData.email || !formData.phone) {
       toast({
-        title: "Error",
-        description: "Please fill in all required fields",
+        title: language === "hi" ? "त्रुटि" : "Error",
+        description: t("patientReg.fillRequired"),
         variant: "destructive",
       });
       return;
     }
 
     toast({
-      title: "Patient Registered!",
-      description: `${formData.name} has been successfully added to your patient list`,
+      title: t("patientReg.registered"),
+      description: t("patientReg.registeredDesc", { name: formData.name }),
     });
 
     // Reset form
@@ -71,7 +73,7 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-3">
             <UserPlus className="w-5 h-5 text-primary" />
-            <span>Register New Patient</span>
+            <span>{t("patientReg.title")}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -80,14 +82,14 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
           <Card className="p-4">
             <h3 className="font-semibold mb-4 flex items-center">
               <User className="w-4 h-4 mr-2 text-primary" />
-              Personal Information
+              {t("patientReg.personalInfo")}
             </h3>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Full Name *</Label>
+                <Label htmlFor="name">{t("patientReg.fullName")} *</Label>
                 <Input
                   id="name"
-                  placeholder="Enter patient's full name"
+                  placeholder={t("patientReg.fullNamePlaceholder")}
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                 />
@@ -95,32 +97,32 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="age">Age</Label>
+                  <Label htmlFor="age">{t("patientReg.age")}</Label>
                   <Input
                     id="age"
                     type="number"
-                    placeholder="Age"
+                    placeholder={t("patientReg.age")}
                     value={formData.age}
                     onChange={(e) => handleInputChange('age', e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="gender">Gender</Label>
+                  <Label htmlFor="gender">{t("patientReg.gender")}</Label>
                   <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select gender" />
+                      <SelectValue placeholder={t("patientReg.selectGender")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="male">{t("common.male")}</SelectItem>
+                      <SelectItem value="female">{t("common.female")}</SelectItem>
+                      <SelectItem value="other">{t("common.other")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="email">Email Address *</Label>
+                <Label htmlFor="email">{t("patientReg.email")} *</Label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -135,7 +137,7 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
               </div>
 
               <div>
-                <Label htmlFor="phone">Phone Number *</Label>
+                <Label htmlFor="phone">{t("patientReg.phone")} *</Label>
                 <div className="relative">
                   <Phone className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -149,12 +151,12 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
               </div>
 
               <div>
-                <Label htmlFor="address">Address</Label>
+                <Label htmlFor="address">{t("patientReg.address")}</Label>
                 <div className="relative">
                   <MapPin className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                   <Textarea
                     id="address"
-                    placeholder="Enter complete address"
+                    placeholder={t("patientReg.addressPlaceholder")}
                     className="pl-10"
                     value={formData.address}
                     onChange={(e) => handleInputChange('address', e.target.value)}
@@ -169,39 +171,39 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
           <Card className="p-4">
             <h3 className="font-semibold mb-4 flex items-center">
               <Calendar className="w-4 h-4 mr-2 text-primary" />
-              Medical Information
+              {t("patientReg.medicalInfo")}
             </h3>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="dosha">Ayurvedic Constitution (Dosha)</Label>
+                <Label htmlFor="dosha">{t("patientReg.dosha")}</Label>
                 <Select value={formData.dosha} onValueChange={(value) => handleInputChange('dosha', value)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select primary dosha" />
+                    <SelectValue placeholder={t("patientReg.selectDosha")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="vata">Vata Dominant</SelectItem>
-                    <SelectItem value="pitta">Pitta Dominant</SelectItem>
-                    <SelectItem value="kapha">Kapha Dominant</SelectItem>
+                    <SelectItem value="vata">{t("patientReg.vataDominant")}</SelectItem>
+                    <SelectItem value="pitta">{t("patientReg.pittaDominant")}</SelectItem>
+                    <SelectItem value="kapha">{t("patientReg.kaphaDominant")}</SelectItem>
                     <SelectItem value="vata-pitta">Vata-Pitta</SelectItem>
                     <SelectItem value="pitta-kapha">Pitta-Kapha</SelectItem>
                     <SelectItem value="vata-kapha">Vata-Kapha</SelectItem>
-                    <SelectItem value="tridoshic">Tridoshic (Balanced)</SelectItem>
+                    <SelectItem value="tridoshic">{t("patientReg.tridoshic")}</SelectItem>
                   </SelectContent>
                 </Select>
                 {formData.dosha && (
                   <div className="mt-2">
                     <Badge className={`dosha-${formData.dosha.split('-')[0]}`}>
-                      {formData.dosha.charAt(0).toUpperCase() + formData.dosha.slice(1)} Constitution
+                      {formData.dosha.charAt(0).toUpperCase() + formData.dosha.slice(1)} {t("patientReg.constitution")}
                     </Badge>
                   </div>
                 )}
               </div>
 
               <div>
-                <Label htmlFor="chiefComplaint">Chief Complaint</Label>
+                <Label htmlFor="chiefComplaint">{t("doctorDashboard.chiefComplaint")}</Label>
                 <Textarea
                   id="chiefComplaint"
-                  placeholder="Primary reason for seeking treatment"
+                  placeholder={t("patientReg.chiefComplaintPlaceholder")}
                   value={formData.chiefComplaint}
                   onChange={(e) => handleInputChange('chiefComplaint', e.target.value)}
                   rows={3}
@@ -209,10 +211,10 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
               </div>
 
               <div>
-                <Label htmlFor="medicalHistory">Medical History</Label>
+                <Label htmlFor="medicalHistory">{t("patientReg.medicalHistory")}</Label>
                 <Textarea
                   id="medicalHistory"
-                  placeholder="Previous conditions, surgeries, allergies"
+                  placeholder={t("patientReg.medicalHistoryPlaceholder")}
                   value={formData.medicalHistory}
                   onChange={(e) => handleInputChange('medicalHistory', e.target.value)}
                   rows={3}
@@ -220,10 +222,10 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
               </div>
 
               <div>
-                <Label htmlFor="currentMedications">Current Medications</Label>
+                <Label htmlFor="currentMedications">{t("patientReg.currentMedications")}</Label>
                 <Textarea
                   id="currentMedications"
-                  placeholder="List current medications and supplements"
+                  placeholder={t("patientReg.currentMedicationsPlaceholder")}
                   value={formData.currentMedications}
                   onChange={(e) => handleInputChange('currentMedications', e.target.value)}
                   rows={3}
@@ -236,11 +238,11 @@ const PatientRegistrationModal: React.FC<PatientRegistrationModalProps> = ({ isO
         {/* Actions */}
         <div className="flex items-center justify-end space-x-4 pt-6 border-t">
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSubmit} className="ayur-button-hero">
             <UserPlus className="w-4 h-4 mr-2" />
-            Register Patient
+            {t("patientReg.registerPatient")}
           </Button>
         </div>
       </DialogContent>

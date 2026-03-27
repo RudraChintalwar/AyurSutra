@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import "./PulseMonitor.css";
 
 function computeFFT(signal) {
@@ -90,6 +91,7 @@ function refinePeakFreq(mags, peakBin, freqRes) {
 
 export default function PulseMonitor() {
   const { user, updateUserProfile } = useAuth();
+  const { t } = useLanguage();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const graphCanvasRef = useRef(null);
@@ -208,8 +210,8 @@ export default function PulseMonitor() {
         },
       ].slice(-20);
       updateUserProfile({ bpm_history: next }).then(
-        () => setSaveMessage("Saved to your health history."),
-        () => setSaveMessage("Measured, but history save failed.")
+        () => setSaveMessage(t("pulse.saved")),
+        () => setSaveMessage(t("pulse.saveFailed"))
       );
     }
   };
@@ -284,26 +286,26 @@ export default function PulseMonitor() {
 
   return (
     <div className="pulse-container">
-      <h1 className="pulse-title">Heart BPM Checker</h1>
-      <p className="pulse-subtitle">Place your finger on the camera lens and keep still for 15 seconds.</p>
+      <h1 className="pulse-title">{t("pulse.title")}</h1>
+      <p className="pulse-subtitle">{t("pulse.subtitle")}</p>
 
       <div className="pulse-card">
         <video ref={videoRef} autoPlay muted playsInline className="pulse-video" />
         <canvas ref={canvasRef} width="160" height="120" style={{ display: "none" }} />
         <canvas ref={graphCanvasRef} width="600" height="180" className="pulse-graph" />
         <div className="pulse-meta">
-          <span className={`pulse-pill ${isMeasuring ? "active" : ""}`}>{isMeasuring ? "Measuring..." : "Ready"}</span>
-          <span className={`pulse-pill ${fingerDetected ? "ok" : "warn"}`}>{fingerDetected ? "Finger detected" : "Place finger"}</span>
+          <span className={`pulse-pill ${isMeasuring ? "active" : ""}`}>{isMeasuring ? t("pulse.measuring") : t("pulse.ready")}</span>
+          <span className={`pulse-pill ${fingerDetected ? "ok" : "warn"}`}>{fingerDetected ? t("pulse.fingerDetected") : t("pulse.placeFinger")}</span>
         </div>
         {error ? <p className="pulse-error">{error}</p> : null}
       </div>
 
       <button className="pulse-btn" onClick={isMeasuring ? stopMeasurement : startMeasurement} disabled={!!error}>
-        {isMeasuring ? "Stop Measurement" : "Start BPM Measurement"}
+        {isMeasuring ? t("pulse.stop") : t("pulse.start")}
       </button>
       {isMeasuring ? (
         <div className="pulse-meta" style={{ marginTop: "0.5rem" }}>
-          <span className="pulse-pill active">{progressPct}% complete</span>
+          <span className="pulse-pill active">{t("pulse.complete", { pct: progressPct })}</span>
         </div>
       ) : null}
 
@@ -311,7 +313,7 @@ export default function PulseMonitor() {
         <div className="pulse-result">
           <div className="bpm">{bpm}</div>
           <div className="unit">BPM</div>
-          <div className="quality">Signal Quality: {signalQuality}</div>
+          <div className="quality">{t("pulse.signalQuality")}: {signalQuality}</div>
           {saveMessage ? <div className="quality">{saveMessage}</div> : null}
         </div>
       ) : null}

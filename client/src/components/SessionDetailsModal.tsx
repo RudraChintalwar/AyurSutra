@@ -98,7 +98,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
   };
 
   const handleReschedule = () => {
-    toast({ title: "Reschedule Session", description: "Opening scheduling interface..." });
+    toast({ title: t("sessionDetails.rescheduleTitle"), description: t("sessionDetails.rescheduleDesc") });
     onClose();
   };
 
@@ -117,15 +117,15 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast({
-        title: "Session Cancelled",
-        description: "The session has been cancelled and the patient will be notified.",
+        title: t("sessionDetails.cancelledTitle"),
+        description: t("sessionDetails.cancelledDesc"),
         variant: "destructive"
       });
       onRefresh?.();
       onClose();
     } catch (e: any) {
       console.error("Cancel error:", e);
-      toast({ title: "Error", description: "Failed to cancel the session.", variant: "destructive" });
+      toast({ title: language === "hi" ? "त्रुटि" : "Error", description: t("sessionDetails.failedCancel"), variant: "destructive" });
     } finally {
       setIsActioning(false);
     }
@@ -146,14 +146,14 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast({
-        title: "Session Marked Complete ✅",
-        description: "Session notes saved and status updated.",
+        title: t("sessionDetails.markedCompleteTitle"),
+        description: t("sessionDetails.markedCompleteDesc"),
       });
       onRefresh?.();
       onClose();
     } catch (e: any) {
       console.error("Complete error:", e);
-      toast({ title: "Error", description: "Failed to mark session as complete.", variant: "destructive" });
+      toast({ title: language === "hi" ? "त्रुटि" : "Error", description: t("sessionDetails.failedComplete"), variant: "destructive" });
     } finally {
       setIsActioning(false);
     }
@@ -201,7 +201,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
               <h4 className="font-playfair text-lg font-semibold">{t("sessionDetails.sessionInfo")}</h4>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Status</span>
+                  <span className="text-muted-foreground">{t("sessionDetails.status")}</span>
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(session.status)}
                     <Badge variant={session.status === 'completed' ? 'default' : 'outline'}>
@@ -210,20 +210,20 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Date & Time</span>
+                  <span className="text-muted-foreground">{t("sessionDetails.dateTime")}</span>
                   <div className="font-medium text-right">{formatDateTime(session.datetime)}</div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Therapy</span>
+                  <span className="text-muted-foreground">{t("sessionDetails.therapy")}</span>
                   <span className="font-medium">{session.therapy}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Duration</span>
+                  <span className="text-muted-foreground">{t("sessionDetails.duration")}</span>
                   <span className="font-medium">{session.duration_minutes} minutes</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Location</span>
-                  <div className="flex items-center text-sm"><MapPin className="w-4 h-4 mr-1" />Treatment Room A</div>
+                  <span className="text-muted-foreground">{t("sessionDetails.location")}</span>
+                  <div className="flex items-center text-sm"><MapPin className="w-4 h-4 mr-1" />{t("sessionDetails.treatmentRoom")}</div>
                 </div>
               </div>
             </div>
@@ -234,14 +234,14 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                 <div className="flex items-start space-x-2 mb-2">
                   <Heart className="w-4 h-4 mt-1 text-primary" />
                   <div>
-                    <div className="font-medium text-sm">Recommended Treatment</div>
+                    <div className="font-medium text-sm">{t("sessionDetails.recommendedTreatment")}</div>
                     <div className="text-sm text-muted-foreground mt-1">
                       {patient.llm_recommendation?.therapy || 'N/A'} — {patient.llm_recommendation?.sessions_recommended || 0} sessions
                     </div>
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-xs text-muted-foreground">Priority Score</div>
+                  <div className="text-xs text-muted-foreground">{t("sessionDetails.priorityScore")}</div>
                   <div className="flex items-center mt-1">
                     <div className="flex-1 bg-muted rounded-full h-2">
                       <div
@@ -260,7 +260,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                 <div>
                   <div className="flex items-center space-x-2 mb-2">
                     <FileText className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium text-sm">Session Notes</span>
+                    <span className="font-medium text-sm">{t("doctorDashboard.sessionNotes")}</span>
                   </div>
                   <div className="p-3 bg-muted/30 rounded-lg text-sm">{session.notes}</div>
                 </div>
@@ -269,11 +269,11 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
               {/* ─── FIX #3: Doctor notes field shown only for active sessions ───── */}
               {session.status === 'scheduled' || session.status === 'pending_review' || session.status === 'confirmed' ? (
                 <div>
-                  <Label className="text-sm font-medium">Doctor Notes (optional)</Label>
+                  <Label className="text-sm font-medium">{t("sessionDetails.doctorNotesOptional")}</Label>
                   <Textarea
                     value={doctorNotes}
                     onChange={(e) => setDoctorNotes(e.target.value)}
-                    placeholder="Add clinical notes for this session..."
+                    placeholder={t("sessionDetails.addClinicalNotes")}
                     className="mt-1 resize-none"
                     rows={2}
                   />
@@ -310,10 +310,10 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
 
             {session.status === 'completed' && (
               <Button
-                onClick={() => toast({ title: "Session Report", description: "Generating detailed session report..." })}
+                onClick={() => toast({ title: t("sessionDetails.reportTitle"), description: t("sessionDetails.reportDesc") })}
                 className="ayur-button-accent"
               >
-                <FileText className="w-4 h-4 mr-2" />View Report
+                <FileText className="w-4 h-4 mr-2" />{t("sessionDetails.viewReport")}
               </Button>
             )}
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ReportAnalyzer.css';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const ReportAnalyzer = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -10,6 +11,8 @@ const ReportAnalyzer = () => {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const tx = (en: string, hi: string) => (language === 'hi' ? hi : en);
 
   /* ================== File Handlers ================== */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,7 +22,7 @@ const ReportAnalyzer = () => {
       setError(null);
       console.log('File selected:', selectedFile.name);
     } else {
-      setError('Please select a valid PDF file');
+      setError(tx('Please select a valid PDF file', 'कृपया वैध PDF फ़ाइल चुनें'));
     }
   };
 
@@ -44,7 +47,7 @@ const ReportAnalyzer = () => {
       setError(null);
       console.log('File dropped:', droppedFile.name);
     } else {
-      setError('Please drop a valid PDF file');
+      setError(tx('Please drop a valid PDF file', 'कृपया वैध PDF फ़ाइल ड्रॉप करें'));
     }
   };
 
@@ -54,7 +57,7 @@ const ReportAnalyzer = () => {
     e.stopPropagation();
     
     if (!file) {
-      setError('Please select a PDF file first');
+      setError(tx('Please select a PDF file first', 'पहले एक PDF फ़ाइल चुनें'));
       return;
     }
 
@@ -83,11 +86,11 @@ const ReportAnalyzer = () => {
     } catch (err: any) {
       console.error('Error analyzing report:', err);
       if (err.message.includes('Failed to fetch')) {
-        setError('Cannot connect to the analysis server. Please make sure the backend server is running.');
+        setError(tx('Cannot connect to the analysis server. Please make sure the backend server is running.', 'विश्लेषण सर्वर से कनेक्ट नहीं हो सका। कृपया बैकएंड सर्वर चालू करें।'));
       } else if (err.message.includes('NetworkError')) {
-        setError('Network error. Please check your internet connection and try again.');
+        setError(tx('Network error. Please check your internet connection and try again.', 'नेटवर्क त्रुटि। कृपया इंटरनेट कनेक्शन जांचकर पुनः प्रयास करें।'));
       } else {
-        setError(err.message || 'Failed to analyze report. Please try again.');
+        setError(err.message || tx('Failed to analyze report. Please try again.', 'रिपोर्ट विश्लेषण विफल। कृपया पुनः प्रयास करें।'));
       }
     } finally {
       setLoading(false);
@@ -147,12 +150,12 @@ Generated on: ${new Date().toLocaleDateString()}`;
 
       <div className="ra-header">
         <button className="ra-back-btn" onClick={() => navigate(-1)}>
-          ← Back
+          ← {tx('Back', 'वापस')}
         </button>
         <div className="ra-title-section">
-          <h1 className="ra-main-title">Ayurvedic Report Analyzer</h1>
+          <h1 className="ra-main-title">{tx('Ayurvedic Report Analyzer', 'आयुर्वेदिक रिपोर्ट विश्लेषक')}</h1>
           <p className="ra-subtitle">
-            Upload your medical reports for personalized Ayurvedic insights and recommendations
+            {tx('Upload your medical reports for personalized Ayurvedic insights and recommendations', 'व्यक्तिगत आयुर्वेदिक अंतर्दृष्टि और सुझावों के लिए अपनी रिपोर्ट अपलोड करें')}
           </p>
         </div>
         <div className="ra-logo">
@@ -169,10 +172,9 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <span className="ra-upload-main-icon">📄</span>
                 <span className="ra-upload-accent-icon">🌿</span>
               </div>
-              <h2 className="ra-upload-title">Upload Medical Report</h2>
+              <h2 className="ra-upload-title">{tx('Upload Medical Report', 'मेडिकल रिपोर्ट अपलोड करें')}</h2>
               <p className="ra-upload-description">
-                Upload your PDF medical report to receive personalized Ayurvedic analysis,
-                dosha imbalance insights, and natural remedy recommendations.
+                {tx('Upload your PDF medical report to receive personalized Ayurvedic analysis, dosha imbalance insights, and natural remedy recommendations.', 'व्यक्तिगत आयुर्वेदिक विश्लेषण, दोष असंतुलन अंतर्दृष्टि और प्राकृतिक उपचार सुझाव पाने के लिए PDF रिपोर्ट अपलोड करें।')}
               </p>
 
               <div
@@ -186,12 +188,12 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-drop-content">
                   <span className="ra-drop-icon">📤</span>
                   <h3 className="ra-drop-title">
-                    {file ? 'File Selected' : 'Drag & Drop your PDF here'}
+                    {file ? tx('File Selected', 'फ़ाइल चयनित') : tx('Drag & Drop your PDF here', 'अपनी PDF यहां ड्रैग और ड्रॉप करें')}
                   </h3>
                   <p className="ra-drop-subtitle">
-                    {file ? file.name : 'or click to browse files'}
+                    {file ? file.name : tx('or click to browse files', 'या फ़ाइल चुनने के लिए क्लिक करें')}
                   </p>
-                  {!file && <button type="button" className="ra-browse-btn">Browse Files</button>}
+                  {!file && <button type="button" className="ra-browse-btn">{tx('Browse Files', 'फ़ाइल ब्राउज़ करें')}</button>}
                 </div>
                 <input
                   ref={fileInputRef}
@@ -236,9 +238,9 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 }}
               >
                 {loading ? (
-                  <><span className="ra-loading-spinner"></span> Analyzing Report...</>
+                  <><span className="ra-loading-spinner"></span> {tx('Analyzing Report...', 'रिपोर्ट विश्लेषण हो रहा है...')}</>
                 ) : (
-                  <><span className="ra-analyze-icon">🔍</span> Analyze Report</>
+                  <><span className="ra-analyze-icon">🔍</span> {tx('Analyze Report', 'रिपोर्ट विश्लेषित करें')}</>
                 )}
               </button>
             </div>
@@ -254,11 +256,11 @@ Generated on: ${new Date().toLocaleDateString()}`;
                   <span className="ra-results-accent-icon">🌿</span>
                 </div>
                 <div className="ra-results-title">
-                  <h2>Ayurvedic Analysis Complete</h2>
-                  <p>Personalized insights based on your medical report</p>
+                  <h2>{tx('Ayurvedic Analysis Complete', 'आयुर्वेदिक विश्लेषण पूर्ण')}</h2>
+                  <p>{tx('Personalized insights based on your medical report', 'आपकी मेडिकल रिपोर्ट पर आधारित व्यक्तिगत अंतर्दृष्टि')}</p>
                 </div>
                 <button className="ra-new-analysis" onClick={resetAnalysis}>
-                  Analyze New Report
+                  {tx('Analyze New Report', 'नई रिपोर्ट विश्लेषित करें')}
                 </button>
               </div>
 
@@ -266,7 +268,7 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-analysis-card">
                   <div className="ra-card-header">
                     <span className="ra-card-icon">⚖️</span>
-                    <h3>Dosha Imbalance</h3>
+                    <h3>{tx('Dosha Imbalance', 'दोष असंतुलन')}</h3>
                   </div>
                   <div className="ra-card-content">
                     <p className="ra-dosha-text text-primary font-medium">{analysis.dosha_imbalance}</p>
@@ -276,7 +278,7 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-analysis-card">
                   <div className="ra-card-header">
                     <span className="ra-card-icon">💊</span>
-                    <h3>Condition Analysis</h3>
+                    <h3>{tx('Condition Analysis', 'स्थिति विश्लेषण')}</h3>
                   </div>
                   <div className="ra-card-content">
                     <p>{analysis.condition}</p>
@@ -286,7 +288,7 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-analysis-card">
                   <div className="ra-card-header">
                     <span className="ra-card-icon">💡</span>
-                    <h3>Recommendations</h3>
+                    <h3>{tx('Recommendations', 'सुझाव')}</h3>
                   </div>
                   <div className="ra-card-content">
                     <p>{analysis.recommendations}</p>
@@ -296,7 +298,7 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-analysis-card">
                   <div className="ra-card-header">
                     <span className="ra-card-icon">🌱</span>
-                    <h3>Herbal Remedies</h3>
+                    <h3>{tx('Herbal Remedies', 'हर्बल उपचार')}</h3>
                   </div>
                   <div className="ra-card-content">
                     <p>{analysis.herbal_remedies}</p>
@@ -306,7 +308,7 @@ Generated on: ${new Date().toLocaleDateString()}`;
                 <div className="ra-analysis-card">
                   <div className="ra-card-header">
                     <span className="ra-card-icon">🧘</span>
-                    <h3>Lifestyle Changes</h3>
+                    <h3>{tx('Lifestyle Changes', 'जीवनशैली परिवर्तन')}</h3>
                   </div>
                   <div className="ra-card-content">
                     <ul className="ra-lifestyle-list">
@@ -324,11 +326,11 @@ Generated on: ${new Date().toLocaleDateString()}`;
               <div className="ra-results-actions flex gap-4 mt-6">
                 <button className="ra-download-btn flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors" onClick={handleDownloadReport}>
                   <span className="ra-download-icon">📥</span>
-                  Download Analysis Report
+                  {tx('Download Analysis Report', 'विश्लेषण रिपोर्ट डाउनलोड करें')}
                 </button>
                 <button className="ra-book-appointment-btn flex items-center justify-center gap-2 bg-ayur-sage text-white px-4 py-2 rounded-md hover:bg-ayur-olive transition-colors" onClick={() => navigate('/patient/sessions')}>
                   <span className="ra-book-icon">📅</span>
-                  Book Ayurvedic Consultation
+                  {tx('Book Ayurvedic Consultation', 'आयुर्वेदिक परामर्श बुक करें')}
                 </button>
               </div>
             </div>
@@ -339,10 +341,10 @@ Generated on: ${new Date().toLocaleDateString()}`;
           <div className="ra-error-section mt-8 flex justify-center">
             <div className="ra-error-card bg-red-50 text-red-800 p-6 rounded-lg border border-red-200 text-center w-full max-w-md">
               <div className="ra-error-icon text-4xl mb-4">❌</div>
-              <h3 className="text-xl font-bold mb-2">Analysis Failed</h3>
+              <h3 className="text-xl font-bold mb-2">{tx('Analysis Failed', 'विश्लेषण विफल')}</h3>
               <p className="mb-4">{analysis.error}</p>
               <button className="ra-retry-btn bg-red-600 text-white px-6 py-2 rounded-md font-medium hover:bg-red-700 transition-colors" onClick={resetAnalysis}>
-                Try Again
+                {tx('Try Again', 'पुनः प्रयास करें')}
               </button>
             </div>
           </div>

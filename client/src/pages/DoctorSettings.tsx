@@ -33,7 +33,7 @@ import {
 
 const DoctorSettings = () => {
   const { user, linkGoogleCalendar, unlinkGoogleCalendar } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [calBusy, setCalBusy] = useState(false);
@@ -168,7 +168,7 @@ const DoctorSettings = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="name">{language === "hi" ? "पूरा नाम" : "Full Name"}</Label>
                   <Input
                     id="name"
                     value={profileData.name}
@@ -177,7 +177,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">{language === "hi" ? "ईमेल पता" : "Email Address"}</Label>
                   <div className="relative">
                     <Mail className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -190,7 +190,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="phone">{language === "hi" ? "फोन नंबर" : "Phone Number"}</Label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -203,7 +203,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="specialty">Specialty</Label>
+                  <Label htmlFor="specialty">{language === "hi" ? "विशेषज्ञता" : "Specialty"}</Label>
                   <Input
                     id="specialty"
                     value={profileData.specialty}
@@ -214,7 +214,7 @@ const DoctorSettings = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="experience">Years of Experience</Label>
+                  <Label htmlFor="experience">{language === "hi" ? "अनुभव के वर्ष" : "Years of Experience"}</Label>
                   <Input
                     id="experience"
                     value={profileData.experience}
@@ -223,7 +223,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="license">License Number</Label>
+                  <Label htmlFor="license">{language === "hi" ? "लाइसेंस नंबर" : "License Number"}</Label>
                   <Input
                     id="license"
                     value={profileData.license}
@@ -232,7 +232,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="clinic">Clinic/Practice Name</Label>
+                  <Label htmlFor="clinic">{language === "hi" ? "क्लिनिक/प्रैक्टिस नाम" : "Clinic/Practice Name"}</Label>
                   <Input
                     id="clinic"
                     value={profileData.clinic}
@@ -241,7 +241,7 @@ const DoctorSettings = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="address">{language === "hi" ? "पता" : "Address"}</Label>
                   <div className="relative">
                     <MapPin className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -259,7 +259,7 @@ const DoctorSettings = () => {
             
             <div className="flex justify-end">
               <Button onClick={handleProfileUpdate} className="ayur-button-hero">
-                Update Profile
+                {language === "hi" ? "प्रोफाइल अपडेट करें" : "Update Profile"}
               </Button>
             </div>
           </Card>
@@ -270,7 +270,7 @@ const DoctorSettings = () => {
           <Card className="ayur-card p-6 animate-slide-up">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Bell className="w-5 h-5 mr-2 text-primary" />
-              Notification Preferences
+              {language === "hi" ? "सूचना वरीयताएं" : "Notification Preferences"}
             </h3>
 
             <div className="space-y-6">
@@ -281,12 +281,12 @@ const DoctorSettings = () => {
                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {key === 'newPatients' && 'Get notified when new patients register'}
-                      {key === 'sessionReminders' && 'Reminders for upcoming sessions'}
-                      {key === 'emergencyAlerts' && 'Critical patient condition alerts'}
-                      {key === 'weeklyReports' && 'Weekly practice performance reports'}
-                      {key === 'patientFeedback' && 'When patients submit feedback'}
-                      {key === 'systemUpdates' && 'Software updates and maintenance notices'}
+                      {key === 'newPatients' && (language === "hi" ? 'नए रोगी पंजीकृत होने पर सूचना पाएं' : 'Get notified when new patients register')}
+                      {key === 'sessionReminders' && (language === "hi" ? 'आगामी सत्रों के लिए रिमाइंडर' : 'Reminders for upcoming sessions')}
+                      {key === 'emergencyAlerts' && (language === "hi" ? 'गंभीर रोगी स्थिति अलर्ट' : 'Critical patient condition alerts')}
+                      {key === 'weeklyReports' && (language === "hi" ? 'साप्ताहिक प्रैक्टिस प्रदर्शन रिपोर्ट' : 'Weekly practice performance reports')}
+                      {key === 'patientFeedback' && (language === "hi" ? 'जब रोगी फीडबैक सबमिट करें' : 'When patients submit feedback')}
+                      {key === 'systemUpdates' && (language === "hi" ? 'सॉफ़्टवेयर अपडेट और मेंटेनेंस सूचना' : 'Software updates and maintenance notices')}
                     </div>
                   </div>
                   <Switch
@@ -303,7 +303,7 @@ const DoctorSettings = () => {
             
             <div className="flex justify-end">
               <Button onClick={handleNotificationUpdate} className="ayur-button-hero">
-                Save Preferences
+                {language === "hi" ? "वरीयताएं सहेजें" : "Save Preferences"}
               </Button>
             </div>
           </Card>
@@ -314,7 +314,7 @@ const DoctorSettings = () => {
           <Card className="ayur-card p-6 animate-slide-up">
             <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
               <Calendar className="w-5 h-5 mr-2 text-primary" />
-              Weekly Availability
+              {language === "hi" ? "साप्ताहिक उपलब्धता" : "Weekly Availability"}
             </h3>
 
             <div className="space-y-4">
@@ -351,7 +351,7 @@ const DoctorSettings = () => {
                           className="w-24"
                         />
                       </div>
-                      <span className="text-muted-foreground">to</span>
+                      <span className="text-muted-foreground">{language === "hi" ? "से" : "to"}</span>
                       <Input
                         type="time"
                         value={schedule.end}
@@ -375,7 +375,7 @@ const DoctorSettings = () => {
           <Card className="ayur-card p-6 animate-slide-up max-w-2xl">
             <h3 className="font-playfair text-xl font-semibold mb-2 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-primary" />
-              Google Calendar
+              {t("common.calendar")}
             </h3>
             <p className="text-sm text-muted-foreground mb-6">
               Connect your primary calendar so approved sessions sync with your reminders. Patients link their own accounts separately.
@@ -386,7 +386,7 @@ const DoctorSettings = () => {
                   Connected
                 </Badge>
               ) : (
-                <Badge variant="outline">Not connected</Badge>
+                <Badge variant="outline">{language === "hi" ? "कनेक्ट नहीं" : "Not connected"}</Badge>
               )}
             </div>
             <div className="flex flex-wrap gap-3">
@@ -404,7 +404,9 @@ const DoctorSettings = () => {
                   }
                 }}
               >
-                {user?.calendarSyncConnected ? 'Already connected' : 'Connect Google Calendar'}
+                {user?.calendarSyncConnected
+                  ? (language === "hi" ? "पहले से कनेक्टेड" : "Already connected")
+                  : (language === "hi" ? "Google Calendar कनेक्ट करें" : "Connect Google Calendar")}
               </Button>
               <Button
                 variant="outline"
@@ -423,7 +425,7 @@ const DoctorSettings = () => {
                 }}
               >
                 {calBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                Disconnect
+                {language === "hi" ? "डिस्कनेक्ट" : "Disconnect"}
               </Button>
             </div>
           </Card>
@@ -435,30 +437,30 @@ const DoctorSettings = () => {
             <Card className="ayur-card p-6 animate-slide-up">
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Palette className="w-5 h-5 mr-2 text-primary" />
-                Appearance
+                {language === "hi" ? "रूप-रंग" : "Appearance"}
               </h3>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Dark Mode</div>
-                    <div className="text-sm text-muted-foreground">Toggle dark theme</div>
+                    <div className="font-medium">{language === "hi" ? "डार्क मोड" : "Dark Mode"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "डार्क थीम टॉगल करें" : "Toggle dark theme"}</div>
                   </div>
                   <Switch />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Compact Layout</div>
-                    <div className="text-sm text-muted-foreground">Reduce spacing and padding</div>
+                    <div className="font-medium">{language === "hi" ? "कम्पैक्ट लेआउट" : "Compact Layout"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "स्पेसिंग और पैडिंग कम करें" : "Reduce spacing and padding"}</div>
                   </div>
                   <Switch />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Animations</div>
-                    <div className="text-sm text-muted-foreground">Enable UI animations</div>
+                    <div className="font-medium">{language === "hi" ? "एनिमेशन" : "Animations"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "UI एनिमेशन सक्षम करें" : "Enable UI animations"}</div>
                   </div>
                   <Switch defaultChecked />
                 </div>
@@ -468,30 +470,30 @@ const DoctorSettings = () => {
             <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Shield className="w-5 h-5 mr-2 text-primary" />
-                Security & Privacy
+                {language === "hi" ? "सुरक्षा और गोपनीयता" : "Security & Privacy"}
               </h3>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Two-Factor Authentication</div>
-                    <div className="text-sm text-muted-foreground">Enhanced account security</div>
+                    <div className="font-medium">{language === "hi" ? "दो-स्तरीय प्रमाणीकरण" : "Two-Factor Authentication"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "बेहतर खाता सुरक्षा" : "Enhanced account security"}</div>
                   </div>
                   <Switch defaultChecked />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Session Timeout</div>
-                    <div className="text-sm text-muted-foreground">Auto-logout after inactivity</div>
+                    <div className="font-medium">{language === "hi" ? "सत्र टाइमआउट" : "Session Timeout"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "निष्क्रियता पर ऑटो-लॉगआउट" : "Auto-logout after inactivity"}</div>
                   </div>
                   <Switch defaultChecked />
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Data Export</div>
-                    <div className="text-sm text-muted-foreground">Allow data download</div>
+                    <div className="font-medium">{language === "hi" ? "डेटा एक्सपोर्ट" : "Data Export"}</div>
+                    <div className="text-sm text-muted-foreground">{language === "hi" ? "डेटा डाउनलोड की अनुमति" : "Allow data download"}</div>
                   </div>
                   <Switch defaultChecked />
                 </div>
@@ -501,26 +503,26 @@ const DoctorSettings = () => {
             <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Monitor className="w-5 h-5 mr-2 text-primary" />
-                System
+                {language === "hi" ? "सिस्टम" : "System"}
               </h3>
 
               <div className="space-y-4">
                 <div>
-                  <Label>Default Session Duration</Label>
+                  <Label>{language === "hi" ? "डिफ़ॉल्ट सत्र अवधि" : "Default Session Duration"}</Label>
                   <Input type="number" placeholder="90" className="mt-1" />
-                  <div className="text-xs text-muted-foreground mt-1">Minutes</div>
+                  <div className="text-xs text-muted-foreground mt-1">{language === "hi" ? "मिनट" : "Minutes"}</div>
                 </div>
 
                 <div>
-                  <Label>Reminder Timing</Label>
+                  <Label>{language === "hi" ? "रिमाइंडर समय" : "Reminder Timing"}</Label>
                   <Input type="number" placeholder="24" className="mt-1" />
-                  <div className="text-xs text-muted-foreground mt-1">Hours before session</div>
+                  <div className="text-xs text-muted-foreground mt-1">{language === "hi" ? "सत्र से पहले घंटे" : "Hours before session"}</div>
                 </div>
 
                 <div>
-                  <Label>Auto-save Interval</Label>
+                  <Label>{language === "hi" ? "ऑटो-सेव अंतराल" : "Auto-save Interval"}</Label>
                   <Input type="number" placeholder="5" className="mt-1" />
-                  <div className="text-xs text-muted-foreground mt-1">Minutes</div>
+                  <div className="text-xs text-muted-foreground mt-1">{language === "hi" ? "मिनट" : "Minutes"}</div>
                 </div>
               </div>
             </Card>
@@ -528,28 +530,28 @@ const DoctorSettings = () => {
             <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
               <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
                 <Settings className="w-5 h-5 mr-2 text-primary" />
-                Advanced
+                {language === "hi" ? "उन्नत" : "Advanced"}
               </h3>
 
               <div className="space-y-4">
                 <Button variant="outline" className="w-full justify-start">
-                  Export Patient Data
+                  {language === "hi" ? "रोगी डेटा एक्सपोर्ट करें" : "Export Patient Data"}
                 </Button>
 
                 <Button variant="outline" className="w-full justify-start">
-                  Import Treatment Templates
+                  {language === "hi" ? "उपचार टेम्पलेट इम्पोर्ट करें" : "Import Treatment Templates"}
                 </Button>
 
                 <Button variant="outline" className="w-full justify-start">
-                  Reset to Default Settings
+                  {language === "hi" ? "डिफ़ॉल्ट सेटिंग्स पर रीसेट करें" : "Reset to Default Settings"}
                 </Button>
 
                 <Separator />
 
                 <div className="text-sm text-muted-foreground">
-                  <div>App Version: 2.1.0</div>
-                  <div>Last Updated: Sept 28, 2025</div>
-                  <div>Database: Connected</div>
+                  <div>{language === "hi" ? "ऐप संस्करण" : "App Version"}: 2.1.0</div>
+                  <div>{language === "hi" ? "अंतिम अपडेट" : "Last Updated"}: Sept 28, 2025</div>
+                  <div>{language === "hi" ? "डेटाबेस" : "Database"}: {language === "hi" ? "कनेक्टेड" : "Connected"}</div>
                 </div>
               </div>
             </Card>
