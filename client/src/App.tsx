@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import LanguageSelector from "@/components/common/LanguageSelector";
 
 // Pages
 import Landing from "@/pages/Landing";
@@ -315,6 +316,24 @@ const AppRoutes = () => {
   );
 };
 
+function GlobalLanguageSelector() {
+  return (
+    <div className="w-full flex justify-end px-4 pt-3 pb-2 sm:px-6 sm:pt-4">
+      <LanguageSelector />
+    </div>
+  );
+}
+
+function AppShell() {
+  return (
+    <>
+      <GlobalLanguageSelector />
+      <AppRoutes />
+      <ChatbotWidget />
+    </>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <LanguageProvider>
@@ -324,8 +343,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <AppRoutes />
-              <ChatbotWidget />
+              <AppShell />
             </BrowserRouter>
           </TooltipProvider>
         </CartProvider>

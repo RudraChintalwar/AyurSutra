@@ -22,7 +22,6 @@ import {
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import LanguageSelector from '@/components/common/LanguageSelector';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -194,8 +193,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Button variant="ghost" size="sm" className="hidden sm:flex">
                 <Search className="w-4 h-4" />
               </Button>
-              <LanguageSelector />
-
               {/* Dark Mode Toggle */}
               <Button variant="ghost" size="sm" onClick={toggleDarkMode}>
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
