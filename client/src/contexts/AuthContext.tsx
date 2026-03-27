@@ -16,7 +16,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 // ─── Types ───────────────────────────────────────────────
-export type UserRole = "patient" | "doctor" | null;
+export type UserRole = "patient" | "doctor" | "admin" | null;
 
 export interface UserProfile {
   uid: string;
@@ -50,13 +50,16 @@ export interface UserProfile {
   expertiseSymptoms?: string[];
   rating?: number;
   yearsOfExperience?: number;
+  isAdmin?: boolean;
   
   // Location Data
   location?: string;
   geolocation?: { lat: number; lng: number };
 
-  // Google Calendar
+  /** @deprecated Use calendar link flow; not stored in Firestore anymore */
   googleAccessToken?: string;
+  /** Set by server after /api/calendar/oauth/callback */
+  calendarSyncConnected?: boolean;
 }
 
 interface AuthContextType {
@@ -72,6 +75,11 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   getGoogleAccessToken: () => string | null;
+  /** Opens Google OAuth to store refresh token server-side (primary calendar + notifications). */
+  linkGoogleCalendar: () => Promise<void>;
+  /** Clears server-stored tokens and calendarSyncConnected. */
+  unlinkGoogleCalendar: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -116,9 +124,11 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Google Auth Provider with Calendar scope
+// Google Auth Provider with Calendar scope (Firebase Auth)
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/calendar.events");
+// Avoid forcing account-picker on every login; keeps returning-user flow stable.
+googleProvider.setCustomParameters({ prompt: "consent" });
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -126,6 +136,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [role, setRole] = useState<UserRole>(null);
   const [loading, setLoading] = useState(true);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+
+  const deriveRoleFromDoc = (data: Record<string, any>): UserRole => {
+    if (data?.role === "doctor" || data?.role === "patient" || data?.role === "admin") return data.role;
+    const looksDoctor =
+      !!data?.license ||
+      !!data?.specialization ||
+      !!data?.clinicAddress ||
+      (Array.isArray(data?.supportedTherapies) && data.supportedTherapies.length > 0);
+    if (looksDoctor) return "doctor";
+    const looksPatient =
+      !!data?.dosha ||
+      !!data?.reason_for_visit ||
+      (Array.isArray(data?.symptoms) && data.symptoms.length > 0) ||
+      !!data?.llm_recommendation;
+    if (looksPatient) return "patient";
+    const looksAdmin =
+      data?.isAdmin === true ||
+      String(data?.email || "").toLowerCase() ===
+        String(import.meta.env.VITE_EMART_ADMIN_EMAIL || "").toLowerCase();
+    if (looksAdmin) return "admin";
+    return null;
+  };
 
   // Fetch user profile from Firestore (with timeout)
   const fetchUserProfile = async (
@@ -139,15 +171,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (result && result.exists()) {
         const data = result.data();
-        // Restore cached access token if available
+        const resolvedRole = deriveRoleFromDoc(data);
         if (data.googleAccessToken) {
           setGoogleAccessToken(data.googleAccessToken);
+        } else {
+          setGoogleAccessToken(null);
         }
         return {
           uid: fbUser.uid,
           name: data.name || fbUser.displayName || "User",
           email: data.email || fbUser.email || "",
-          role: data.role || "patient",
+          role: resolvedRole,
           avatar: data.avatar || fbUser.photoURL || undefined,
           phone: data.phone,
           dosha: data.dosha,
@@ -162,6 +196,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           license: data.license,
           specialization: data.specialization,
           googleAccessToken: data.googleAccessToken,
+          calendarSyncConnected: data.calendarSyncConnected === true,
           location: data.location,
           geolocation: data.geolocation,
           clinicAddress: data.clinicAddress,
@@ -170,6 +205,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           expertiseSymptoms: data.expertiseSymptoms,
           rating: data.rating,
           yearsOfExperience: data.yearsOfExperience,
+          isAdmin: data.isAdmin === true,
         };
       }
       return null;
@@ -234,14 +270,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { isNewUser: true };
     }
 
-    // User exists. Now we can safely persist their new access token.
     if (token) {
       setGoogleAccessToken(token);
-      await firestoreWriteWithTimeout(
-        doc(db, "users", result.user.uid),
-        { googleAccessToken: token },
-        { merge: true }
-      );
     }
 
     return { isNewUser: false };
@@ -281,7 +311,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       phone: profileData.phone || undefined,
       age: profileData.age || undefined,
       gender: profileData.gender || undefined,
-      googleAccessToken: token || undefined,
       location: profileData.location || undefined,
       geolocation: profileData.geolocation || undefined,
       createdAt: serverTimestamp(),
@@ -311,7 +340,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       gender: profileData.gender,
       license: profileData.license,
       specialization: profileData.specialization,
-      googleAccessToken: token || undefined,
+      calendarSyncConnected: false,
       location: profileData.location,
       geolocation: profileData.geolocation,
       clinicAddress: profileData.clinicAddress,
@@ -345,6 +374,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const getGoogleAccessToken = () => googleAccessToken;
+
+  const refreshProfile = async () => {
+    if (!firebaseUser) return;
+    const profile = await fetchUserProfile(firebaseUser);
+    if (profile) {
+      setUser(profile);
+      setRole(profile.role);
+    }
+  };
+
+  const linkGoogleCalendar = async () => {
+    if (!firebaseUser) {
+      throw new Error("Not signed in");
+    }
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+    const idToken = await firebaseUser.getIdToken(true);
+    const res = await fetch(`${API_URL}/api/calendar/oauth/start`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Could not start Google Calendar linking");
+    }
+    if (data.authUrl) {
+      window.location.href = data.authUrl;
+    }
+  };
+
+  const unlinkGoogleCalendar = async () => {
+    if (!firebaseUser) {
+      throw new Error("Not signed in");
+    }
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+    const idToken = await firebaseUser.getIdToken(true);
+    const res = await fetch(`${API_URL}/api/calendar/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Could not disconnect Google Calendar");
+    }
+    await refreshProfile();
+  };
 
   const devTestLogin = async (role: "patient" | "doctor", testIdx: number = 1) => {
     const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import("firebase/auth");
@@ -386,10 +463,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         logout,
         updateUserProfile,
         getGoogleAccessToken,
+        linkGoogleCalendar,
+        unlinkGoogleCalendar,
+        refreshProfile,
         devTestLogin,
       } as any}
     >
       {children}
     </AuthContext.Provider>
   );
-};
+};

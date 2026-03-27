@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   Sidebar,
   SidebarContent,
@@ -21,16 +22,17 @@ import {
   Leaf
 } from 'lucide-react';
 
-const practitionerItems = [
-  { title: 'Dashboard', url: '/doctor-dashboard', icon: LayoutDashboard },
-  { title: 'Patients', url: '/doctor/patients', icon: Users },
-  { title: 'Calendar', url: '/doctor/calendar', icon: Calendar },
-  { title: 'Messages', url: '/doctor/messages', icon: Bell },
-  { title: 'Analytics', url: '/doctor/analytics', icon: BarChart3 },
-  { title: 'Settings', url: '/doctor/settings', icon: Settings },
-];
-
 export function PractitionerSidebar() {
+  const { t } = useLanguage();
+  const practitionerItems = [
+    { title: t('sidebar.dashboard'), url: '/doctor-dashboard', icon: LayoutDashboard },
+    { title: t('sidebar.patients'), url: '/doctor/patients', icon: Users },
+    { title: t('sidebar.calendar'), url: '/doctor/calendar', icon: Calendar },
+    { title: t('sidebar.messages'), url: '/doctor/messages', icon: Bell },
+    { title: t('sidebar.analytics'), url: '/doctor/analytics', icon: BarChart3 },
+    { title: t('sidebar.settings'), url: '/doctor/settings', icon: Settings },
+  ];
+
   const { state } = useSidebar();
   const navigate = useNavigate();
   const isCollapsed = state === 'collapsed';
@@ -61,10 +63,10 @@ export function PractitionerSidebar() {
             {!isCollapsed && (
               <div className="text-left">
                 <div className="font-playfair text-lg font-semibold text-primary">
-                  Panchakarma
+                  {t('app.brand')}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Practitioner Portal
+                  {t('app.practitionerPortal')}
                 </div>
               </div>
             )}
@@ -73,7 +75,7 @@ export function PractitionerSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3">
-            {!isCollapsed && 'Main Menu'}
+            {!isCollapsed && t('sidebar.mainMenu')}
           </SidebarGroupLabel>
           
           <SidebarGroupContent>

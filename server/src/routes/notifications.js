@@ -1,7 +1,21 @@
 import express from "express";
 import nodemailer from "nodemailer";
+import { admin } from "../middleware/auth.js";
+import { verifyFirebaseIdToken } from "../middleware/firebaseAuth.js";
 
 const router = express.Router();
+const firestoreDb = admin.firestore();
+
+async function getRequesterEmailAndRole(firebaseUid) {
+    const snap = await firestoreDb.collection("users").doc(firebaseUid).get();
+    if (!snap.exists) return { email: null, role: null, isAdmin: false };
+    const data = snap.data() || {};
+    return {
+        email: data.email || data.patient_email || null,
+        role: data.role || null,
+        isAdmin: data.isAdmin === true || data.role === "admin",
+    };
+}
 
 // ─── SendGrid (primary) or Gmail SMTP (fallback) ─────────
 let sendgridMail = null;
@@ -61,9 +75,18 @@ async function sendEmail({ to, subject, html, text }) {
 export { sendEmail };
 
 // ─── Send email notification ─────────────────────────────
-router.post("/send-email", async (req, res) => {
+router.post("/send-email", verifyFirebaseIdToken, async (req, res) => {
     try {
         const { to, subject, html, text } = req.body;
+        if (!to || typeof to !== "string") {
+            return res.status(400).json({ success: false, error: "`to` is required" });
+        }
+
+        const { email: requesterEmail, isAdmin } = await getRequesterEmailAndRole(req.firebaseUid);
+        if (!isAdmin && requesterEmail && String(to).trim().toLowerCase() !== String(requesterEmail).trim().toLowerCase()) {
+            return res.status(403).json({ success: false, error: "Forbidden: can only email your own address" });
+        }
+
         const method = await sendEmail({ to, subject, html, text });
         res.json({ success: true, message: `Email ${method}` });
     } catch (error) {
@@ -76,10 +99,18 @@ router.post("/send-email", async (req, res) => {
 });
 
 // ─── Send session reminder ───────────────────────────────
-router.post("/session-reminder", async (req, res) => {
+router.post("/session-reminder", verifyFirebaseIdToken, async (req, res) => {
     try {
         const { patientEmail, patientName, therapy, datetime, precautions } =
             req.body;
+        if (!patientEmail || typeof patientEmail !== "string") {
+            return res.status(400).json({ success: false, error: "`patientEmail` is required" });
+        }
+
+        const { email: requesterEmail, isAdmin } = await getRequesterEmailAndRole(req.firebaseUid);
+        if (!isAdmin && requesterEmail && String(patientEmail).trim().toLowerCase() !== String(requesterEmail).trim().toLowerCase()) {
+            return res.status(403).json({ success: false, error: "Forbidden: can only send reminders to yourself" });
+        }
 
         const formattedDate = new Date(datetime).toLocaleString("en-IN", {
             weekday: "long",

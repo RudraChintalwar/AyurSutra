@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,11 +38,39 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+const THIRTY_MIN_MS = 30 * 60 * 1000;
+
+/** Proposes free ISO slot times after `afterMs` for bump / emergency flows. */
+function buildCandidateSlotsAfter(occupiedSessions: any[], afterMs: number): string[] {
+  const occupiedTimes = (occupiedSessions || [])
+    .map((s) => new Date(s.datetime).getTime())
+    .filter((t) => !Number.isNaN(t));
+  const candidates: string[] = [];
+  const start = new Date(afterMs);
+  for (let day = 0; day < 8 && candidates.length < 20; day++) {
+    const base = new Date(start);
+    base.setDate(base.getDate() + day);
+    base.setHours(0, 0, 0, 0);
+    if (base.getDay() === 6) base.setDate(base.getDate() + 2);
+    if (base.getDay() === 0) base.setDate(base.getDate() + 1);
+    for (const h of [9, 11, 14, 16]) {
+      const slot = new Date(base);
+      slot.setHours(h, 0, 0, 0);
+      const ms = slot.getTime();
+      if (ms <= afterMs) continue;
+      const conflict = occupiedTimes.some((t) => Math.abs(t - ms) < THIRTY_MIN_MS);
+      if (!conflict) candidates.push(slot.toISOString());
+    }
+  }
+  return candidates;
+}
+
 const DoctorDashboard = () => {
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const [patients, setPatients] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
@@ -62,6 +90,7 @@ const DoctorDashboard = () => {
   const [doctorNotes, setDoctorNotes] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { language, t } = useLanguage();
 
   // ─── Fetch Data ────────────────────────────────────────
   const fetchData = async () => {
@@ -99,8 +128,11 @@ const DoctorDashboard = () => {
   // Now we just refresh local state and show a toast.
   const handleSchedulingComplete = async (sessionData: any) => {
     toast({
-      title: "Sessions Created — Pending Review 📋",
-      description: `Sessions for ${sessionData?.patient?.name || 'patient'} are pending doctor approval.`
+      title: language === "hi" ? "सत्र बनाए गए — समीक्षा लंबित 📋" : "Sessions Created — Pending Review 📋",
+      description:
+        language === "hi"
+          ? `${sessionData?.patient?.name || 'रोगी'} के सत्र डॉक्टर स्वीकृति के लिए लंबित हैं।`
+          : `Sessions for ${sessionData?.patient?.name || 'patient'} are pending doctor approval.`
     });
     await fetchData();
     setShowSchedulingWizard(false);
@@ -110,48 +142,45 @@ const DoctorDashboard = () => {
   const handleApproval = async (sessionId: string, action: 'approved' | 'modified' | 'rejected') => {
     setActionLoading(sessionId);
     try {
-      // Call backend review endpoint
-      const response = await axios.post(`${API_URL}/api/scheduling/appointments/${sessionId}/review`, {
-        action,
-        doctorId: user?.uid,
-        doctorName: user?.name,
-        modifiedTherapy: action === 'modified' ? modifyTherapy : undefined,
-        modifiedDatetime: action === 'modified' && modifyDatetime ? modifyDatetime : undefined,
-      });
+      if (!firebaseUser) {
+        toast({ title: language === "hi" ? 'साइन-इन आवश्यक है' : 'Sign in required', variant: 'destructive' });
+        return;
+      }
+      const token = await firebaseUser.getIdToken();
+      const response = await axios.post(
+        `${API_URL}/api/scheduling/appointments/${sessionId}/review`,
+        {
+          action,
+          doctorId: user?.uid,
+          doctorName: user?.name,
+          modifiedTherapy: action === 'modified' ? modifyTherapy : undefined,
+          modifiedDatetime: action === 'modified' && modifyDatetime ? modifyDatetime : undefined,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       if (response.data.success) {
-        // Apply updates to Firestore
-        const sessionRef = doc(db, 'sessions', sessionId);
-        await updateDoc(sessionRef, response.data.updateData);
-
-        // If approved, send confirmation email to patient
-        const session = sessions.find(s => s.id === sessionId);
-        if (action === 'approved' && session?.patient_email) {
-          try {
-            await axios.post(`${API_URL}/api/notifications/session-reminder`, {
-              patientEmail: session.patient_email,
-              patientName: session.patient_name,
-              therapy: session.therapy,
-              datetime: session.datetime,
-              precautions: ["Your session has been confirmed by the doctor", "Please arrive 15 minutes early"]
-            });
-          } catch (e) {
-            console.error("Email notification failed:", e);
-          }
-        }
-
         toast({
-          title: action === 'approved' ? 'Plan Approved ✅' : action === 'rejected' ? 'Plan Rejected ❌' : 'Plan Modified ✏️',
-          description: `Treatment plan has been ${action} by Dr. ${user?.name || 'Doctor'}.`
+          title:
+            action === 'approved'
+              ? 'Status updated to confirmed'
+              : action === 'rejected'
+                ? 'Plan Rejected ❌'
+                : 'Plan Modified ✏️',
+          description:
+            action === 'rejected'
+              ? `The session was rejected by Dr. ${user?.name || 'Doctor'}.`
+              : `Treatment plan has been ${action} by Dr. ${user?.name || 'Doctor'}.`,
         });
 
         setShowModifyPanel(false);
         setModifySessionId(null);
         await fetchData();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Approval error:', err);
-      toast({ title: 'Error', description: 'Failed to process review.', variant: 'destructive' });
+      const msg = err?.response?.data?.error || err?.message || (language === "hi" ? 'समीक्षा प्रोसेस नहीं हो सकी।' : 'Failed to process review.');
+      toast({ title: language === "hi" ? 'त्रुटि' : 'Error', description: msg, variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
@@ -159,30 +188,97 @@ const DoctorDashboard = () => {
 
   // ─── Emergency Bump ────────────────────────────────────
   const handleEmergencyBump = async (session: any) => {
+    if (!firebaseUser) {
+      toast({ title: 'Sign in required', variant: 'destructive' });
+      return;
+    }
     setActionLoading(session.id);
     try {
-      const allScheduled = sessions.filter(s => s.status === 'confirmed' || s.status === 'scheduled');
-      const response = await axios.post(`${API_URL}/api/scheduling/check-conflicts`, {
-        highPrioritySession: {
-          ...session,
-          patientEmail: session.patient_email,
-          email: session.patient_email,
-          totalPriorityScore: session.totalPriorityScore || session.priority || 90,
+      const bumpable = sessions.filter(
+        (s) =>
+          ['confirmed', 'scheduled', 'pending_review'].includes(s.status) &&
+          s.id !== session.id
+      );
+      const rawPri = session.totalPriorityScore ?? session.priority;
+      const priorityScore = Number(rawPri);
+      const effectivePriority = Number.isFinite(priorityScore) ? priorityScore : 90;
+      const afterMs = new Date(session.datetime).getTime();
+      const availableSlots = buildCandidateSlotsAfter(bumpable, afterMs);
+
+      const token = await firebaseUser.getIdToken();
+      const response = await axios.post(
+        `${API_URL}/api/scheduling/check-conflicts`,
+        {
+          highPrioritySession: {
+            ...session,
+            sessionId: session.id,
+            datetime: session.datetime,
+            therapy: session.therapy,
+            patientName: session.patient_name,
+            patientEmail: session.patient_email,
+            email: session.patient_email,
+            priorityScore: effectivePriority,
+          },
+          allScheduledSessions: bumpable.map((s) => ({
+            ...s,
+            sessionId: s.id,
+            priorityScore: Number(s.totalPriorityScore ?? s.priority) || 50,
+          })),
+          availableSlots,
         },
-        allScheduledSessions: allScheduled,
-        availableSlots: allScheduled.map(s => s.datetime),
-      });
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       if (response.data.bumped) {
-        // Update bumped session in Firestore
-        if (response.data.bumpedSession?.sessionId || response.data.bumpedSession?.id) {
-          const bumpedId = response.data.bumpedSession.sessionId || response.data.bumpedSession.id;
-          await updateDoc(doc(db, 'sessions', bumpedId), {
-            status: 'bumped',
-            bumped_reason: response.data.bumpedSession.reason,
-            original_datetime: response.data.bumpedSession.datetime,
-            datetime: response.data.bumpedSession.newDatetime || response.data.bumpedSession.datetime,
+        if (!response.data.bumpedSession?.newDatetime) {
+          toast({
+            title: "No Free Slot Found",
+            description: "Emergency bump requires a valid replacement slot for displaced patient.",
+            variant: "destructive",
           });
+          return;
+        }
+        const applyResp = await axios.post(
+          `${API_URL}/api/scheduling/apply-bump`,
+          { bumpResult: response.data },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const persisted = applyResp?.data?.persisted || {};
+
+        // If these sessions already have linked Google events, resync them to the new datetime.
+        // This keeps the Google Calendar view consistent with the Firestore schedule.
+        if (firebaseUser) {
+          const token = await firebaseUser.getIdToken();
+          const bumpedId =
+            persisted.bumpedId ||
+            response.data.bumpedSession?.sessionId ||
+            response.data.bumpedSession?.id;
+
+          const bumpedSession = sessions.find((sx) => sx.id === bumpedId);
+          const targetIds = Array.from(
+            new Set(
+              [
+                session?.gcal_event_id_doctor || session?.gcal_event_id_patient ? session.id : null,
+                bumpedSession?.gcal_event_id_doctor || bumpedSession?.gcal_event_id_patient ? bumpedSession.id : null,
+              ].filter(Boolean)
+            )
+          ) as string[];
+
+          if (targetIds.length > 0) {
+            try {
+              await Promise.all(
+                targetIds.map((id) =>
+                  axios.post(
+                    `${API_URL}/api/calendar/session-events/resync`,
+                    { sessionId: id },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  )
+                )
+              );
+            } catch (calErr) {
+              console.warn("Calendar resync failed (sessions updated locally):", calErr);
+            }
+          }
         }
 
         toast({
@@ -198,7 +294,7 @@ const DoctorDashboard = () => {
       }
     } catch (err) {
       console.error("Bump error:", err);
-      toast({ title: "Bump Failed", description: "Could not execute emergency bump.", variant: "destructive" });
+      toast({ title: language === "hi" ? "बंप असफल" : "Bump Failed", description: language === "hi" ? "इमरजेंसी बंप लागू नहीं हो सका।" : "Could not execute emergency bump.", variant: "destructive" });
     } finally {
       setActionLoading(null);
     }
@@ -206,16 +302,15 @@ const DoctorDashboard = () => {
 
   // ─── Complete Session Handler ──────────────────────────
   const handleCompleteSession = async () => {
-    if (!completeSessionId) return;
+    if (!completeSessionId || !firebaseUser) return;
     setActionLoading(completeSessionId);
     try {
-      const sessionRef = doc(db, 'sessions', completeSessionId);
-      await updateDoc(sessionRef, {
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        doctor_notes: doctorNotes.trim() || '',
-        completed_by: user?.uid || '',
-      });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${completeSessionId}/complete`,
+        { doctorNotes: doctorNotes.trim() || '' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       // Send post-session notification to patient
       const session = sessions.find(s => s.id === completeSessionId);
@@ -253,16 +348,16 @@ const DoctorDashboard = () => {
 
   // ─── Cancel Session Handler ────────────────────────────
   const handleCancelSession = async (sessionId: string) => {
+    if (!firebaseUser) return;
     setActionLoading(sessionId);
     try {
-      const sessionRef = doc(db, 'sessions', sessionId);
       const session = sessions.find(s => s.id === sessionId);
-      await updateDoc(sessionRef, {
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-        cancelled_by: user?.uid || '',
-        cancel_reason: 'Cancelled by doctor',
-      });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${sessionId}/cancel`,
+        { cancelReason: 'Cancelled by doctor' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       // Notify patient
       if (session?.patient_email) {
@@ -300,7 +395,8 @@ const DoctorDashboard = () => {
   const priorityQueue = sessions
     .map(session => {
       const patient = patients.find(p => p.id === session.patient_id || p.uid === session.patient_id);
-      const computedPriority = session.totalPriorityScore ?? session.priority ?? 0;
+      const n = Number(session.totalPriorityScore ?? session.priority);
+      const computedPriority = Number.isFinite(n) ? n : 0;
       return { ...session, patient, computedPriority };
     })
     .filter(session => session.status !== 'completed' && session.status !== 'rejected')
@@ -354,23 +450,23 @@ const DoctorDashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Doctor Dashboard
+            {t("page.doctorDashboard")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Today's Priority Queue • {new Date().toLocaleDateString('en-IN')} • Dr. {user?.name || "Practitioner"}
+            {language === "hi" ? "आज की प्राथमिकता कतार" : "Today's Priority Queue"} • {new Date().toLocaleDateString(language === "hi" ? 'hi-IN' : 'en-IN')} • Dr. {user?.name || "Practitioner"}
           </p>
         </div>
         <div className="flex items-center space-x-2">
           <Button onClick={() => navigate('/doctor/messages')} variant="outline" size="sm">
             <Bell className="w-4 h-4 mr-1" />
-            Messages
+            {t("sidebar.messages")}
           </Button>
           <Button
             onClick={() => setShowSchedulingWizard(true)}
             className="ayur-button-accent"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Schedule New Session
+            {language === "hi" ? "नया सत्र शेड्यूल करें" : "Schedule New Session"}
           </Button>
         </div>
       </div>
@@ -384,7 +480,7 @@ const DoctorDashboard = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-primary">{patients.length}</div>
-              <div className="text-sm text-muted-foreground">Patients</div>
+              <div className="text-sm text-muted-foreground">{t("sidebar.patients")}</div>
             </div>
           </div>
         </Card>
@@ -396,7 +492,7 @@ const DoctorDashboard = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
-              <div className="text-sm text-muted-foreground">Pending Review</div>
+              <div className="text-sm text-muted-foreground">{language === "hi" ? "समीक्षा लंबित" : "Pending Review"}</div>
             </div>
           </div>
         </Card>
@@ -408,7 +504,7 @@ const DoctorDashboard = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-accent">{confirmedCount}</div>
-              <div className="text-sm text-muted-foreground">Confirmed</div>
+              <div className="text-sm text-muted-foreground">{language === "hi" ? "पुष्ट" : "Confirmed"}</div>
             </div>
           </div>
         </Card>
@@ -420,7 +516,7 @@ const DoctorDashboard = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-green-600">{completedCount}</div>
-              <div className="text-sm text-muted-foreground">Completed</div>
+              <div className="text-sm text-muted-foreground">{t("patient.completed")}</div>
             </div>
           </div>
         </Card>
@@ -432,7 +528,7 @@ const DoctorDashboard = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-red-600">{highPriorityCount}</div>
-              <div className="text-sm text-muted-foreground">High Priority</div>
+              <div className="text-sm text-muted-foreground">{language === "hi" ? "उच्च प्राथमिकता" : "High Priority"}</div>
             </div>
           </div>
         </Card>
@@ -444,14 +540,16 @@ const DoctorDashboard = () => {
           <Card className="ayur-card p-6 h-fit">
             <h3 className="font-playfair text-xl font-semibold mb-1 flex items-center">
               <ArrowUpDown className="w-5 h-5 mr-2 text-accent" />
-              Priority Queue
+              {language === "hi" ? "प्राथमिकता कतार" : "Priority Queue"}
             </h3>
             <p className="text-xs text-muted-foreground mb-4">
-              Sorted by priority score (Max-Heap) • Severity 40% + Feedback 35% + Dosha 15% + Wait 10%
+              {language === "hi"
+                ? "प्राथमिकता स्कोर (मैक्स-हीप) के अनुसार क्रमबद्ध • Severity 40% + Feedback 35% + Dosha 15% + Wait 10%"
+                : "Sorted by priority score (Max-Heap) • Severity 40% + Feedback 35% + Dosha 15% + Wait 10%"}
             </p>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {priorityQueue.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No sessions in queue</p>
+                <p className="text-sm text-muted-foreground text-center py-4">{language === "hi" ? "कतार में कोई सत्र नहीं" : "No sessions in queue"}</p>
               )}
               {priorityQueue.slice(0, 10).map((item, index) => (
                 <div

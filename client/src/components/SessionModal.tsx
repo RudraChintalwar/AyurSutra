@@ -16,8 +16,12 @@ import {
 import FeedbackForm from './FeedbackForm';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import axios from 'axios';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface SessionModalProps {
   session: any | null;
@@ -32,7 +36,8 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { t, language } = useLanguage();
+  const { user, firebaseUser } = useAuth();
   const isDoctor = user?.role === 'doctor';
 
   useEffect(() => {
@@ -58,7 +63,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
   const practitioner = { name: session.practitioner_name || 'Practitioner', specialty: session.specialty || 'Panchakarma' };
 
   const formatDateTime = (dateTime: string) => {
-    return new Date(dateTime).toLocaleString('en-IN', {
+    return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
@@ -71,19 +76,26 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
   const handleFeedbackSubmit = async (feedbackData: any) => {
     try {
-      // Update the session document in Firestore with feedback
-      const sessionRef = doc(db, 'sessions', session.id);
-      const updatePayload: any = {
-        feedback: feedbackData.feedback,
-        feedback_submitted_at: new Date().toISOString(),
-      };
-
-      // If escalation was triggered, apply the session updates
-      if (feedbackData.llmResponse?.sessionUpdate) {
-        Object.assign(updatePayload, feedbackData.llmResponse.sessionUpdate);
+      if (!firebaseUser) {
+        toast({ title: 'Sign in required', description: 'Please sign in to submit feedback.', variant: 'destructive' });
+        return;
       }
-
-      await updateDoc(sessionRef, updatePayload);
+      const token = await firebaseUser.getIdToken();
+      // Emergency escalation persists feedback + priority on server; skip redundant PATCH.
+      if (!feedbackData.llmResponse?.escalation) {
+        const body: Record<string, unknown> = {
+          feedback: feedbackData.feedback,
+          feedback_submitted_at: new Date().toISOString(),
+        };
+        if (feedbackData.llmResponse?.sessionUpdate) {
+          body.sessionUpdate = feedbackData.llmResponse.sessionUpdate;
+        }
+        await axios.patch(
+          `${API_URL}/api/sessions/${session.id}/patient-feedback`,
+          body,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
 
       toast({
         title: feedbackData.llmResponse?.escalation ? '⚠️ Escalation Triggered' : '✅ Feedback Submitted',
@@ -110,11 +122,17 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
   const handleRescheduleRequest = async () => {
     try {
-      await updateDoc(doc(db, 'sessions', session.id), {
-        status: 'reschedule_requested',
-        reschedule_reason: 'Patient requested to reschedule this session'
-      });
-      toast({ title: 'Reschedule Requested', description: 'The practitioner has been notified of your request and will provide alternative slots.' });
+      if (!firebaseUser) {
+        toast({ title: 'Sign in required', variant: 'destructive' });
+        return;
+      }
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/reschedule-request`,
+        { rescheduleReason: 'Patient requested to reschedule this session' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast({ title: t('sessionModal.rescheduleRequested'), description: t('sessionModal.rescheduleRequestedDesc') });
       onClose();
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to request reschedule.', variant: 'destructive' });
@@ -123,16 +141,16 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
   // Complete session handler (for doctors)
   const handleCompleteSessionFromModal = async () => {
-    if (!session?.id) return;
+    if (!session?.id || !firebaseUser) return;
     setIsCompleting(true);
     try {
-      await updateDoc(doc(db, 'sessions', session.id), {
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        doctor_notes: completionNotes.trim() || '',
-        completed_by: user?.uid || '',
-      });
-      toast({ title: 'Session Completed ✅', description: `${session.therapy} session marked as completed.` });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/complete`,
+        { doctorNotes: completionNotes.trim() || '' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast({ title: t('sessionModal.sessionCompleted'), description: `${session.therapy} session marked as completed.` });
       setCompletionNotes('');
       onClose();
     } catch (err) {
@@ -144,15 +162,15 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
   // Cancel session handler
   const handleCancelSession = async () => {
-    if (!session?.id) return;
+    if (!session?.id || !firebaseUser) return;
     try {
-      await updateDoc(doc(db, 'sessions', session.id), {
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-        cancelled_by: user?.uid || '',
-        cancel_reason: isDoctor ? 'Cancelled by doctor' : 'Cancelled by patient',
-      });
-      toast({ title: 'Session Cancelled', description: 'The session has been cancelled.' });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/cancel`,
+        { cancelReason: isDoctor ? 'Cancelled by doctor' : 'Cancelled by patient' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast({ title: t('sessionModal.sessionCancelled'), description: language === "hi" ? 'सत्र रद्द कर दिया गया है।' : 'The session has been cancelled.' });
       onClose();
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to cancel session.', variant: 'destructive' });
@@ -161,11 +179,14 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
 
   // Delete session handler (permanent removal)
   const handleDeleteSession = async () => {
-    if (!session?.id) return;
+    if (!session?.id || !firebaseUser) return;
     try {
       if (confirm('Are you sure you want to permanently delete this session from the database? This action cannot be undone.')) {
-        await deleteDoc(doc(db, 'sessions', session.id));
-        toast({ title: 'Session Deleted', description: 'The session was permanently removed.' });
+        const token = await firebaseUser.getIdToken();
+        await axios.delete(`${API_URL}/api/sessions/${session.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        toast({ title: t('sessionModal.sessionDeleted'), description: language === "hi" ? 'सत्र स्थायी रूप से हटा दिया गया।' : 'The session was permanently removed.' });
         onClose();
         // Force refresh by reloading the page so it disappears
         window.location.reload();
@@ -182,6 +203,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
       case 'confirmed': return 'bg-green-100 text-green-700 border-green-200';
       case 'pending_review': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
       case 'bumped': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'reschedule_requested': return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'rejected': return 'bg-red-100 text-red-700 border-red-200';
       case 'cancelled': return 'bg-red-100 text-red-700 border-red-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -193,7 +215,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-playfair text-xl">Session Feedback</DialogTitle>
+            <DialogTitle className="font-playfair text-xl">{t("sessionModal.feedback")}</DialogTitle>
           </DialogHeader>
           <FeedbackForm
             sessionId={session.id}
@@ -483,9 +505,11 @@ const SessionModal: React.FC<SessionModalProps> = ({ session, isOpen, onClose })
               {/* Cancel button for any active session */}
               {['pending_review', 'scheduled', 'confirmed', 'bumped'].includes(session.status) && (
                 <>
-                  <Button variant="outline" className="text-red-800 hover:bg-red-100 border-red-300 font-bold" onClick={handleDeleteSession}>
-                    Delete
-                  </Button>
+                  {isDoctor && (
+                    <Button variant="outline" className="text-red-800 hover:bg-red-100 border-red-300 font-bold" onClick={handleDeleteSession}>
+                      Delete
+                    </Button>
+                  )}
                   <Button variant="outline" className="text-red-600 hover:bg-red-50 border-red-200" onClick={handleCancelSession}>
                     Cancel Session
                   </Button>

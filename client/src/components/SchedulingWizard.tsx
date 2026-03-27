@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,10 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { rankDoctorsByClinicalMatch } from '@/lib/doctorMatching';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 import {
   User, Calendar, Brain, CheckCircle, ArrowRight, ArrowLeft, Star, Clock, TrendingUp, Loader2, MapPin
@@ -43,14 +45,15 @@ const generateDefaultSlots = (): string[] => {
 };
 
 const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, onComplete }) => {
-  const { user, updateUserProfile } = useAuth();
+  const { user, firebaseUser, updateUserProfile } = useAuth();
   const { toast } = useToast();
+  const { t, language } = useLanguage();
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: user?.name || '',
-    phone: '',
+    phone: (user as any)?.phone || '',
     email: user?.email || '',
     reason: user?.reason_for_visit || '',
     symptoms: [] as string[],
@@ -73,6 +76,18 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
   // ─── FIX #6: Use dynamically generated slots ──────────────────────────────
   const [mockSlots, setMockSlots] = useState<string[]>(generateDefaultSlots());
+
+  useEffect(() => {
+    if (!user) return;
+    setFormData((prev) => ({
+      ...prev,
+      name: prev.name || user.name || "",
+      email: prev.email || user.email || "",
+      phone: prev.phone || (user as any)?.phone || "",
+      reason: prev.reason || (user as any)?.reason_for_visit || "",
+      constitution: prev.constitution || (user as any)?.dosha || "Vata",
+    }));
+  }, [user]);
 
   // ─── FIX #5: Auto-initialise score to 5 when symptom toggled on ──────────
   const handleSymptomToggle = (symptom: string) => {
@@ -103,73 +118,14 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   };
 
-  const calculateDistanceKM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const p = 0.017453292519943295;
-    const c = Math.cos;
-    const a = 0.5 - c((lat2 - lat1) * p) / 2 + c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p)) / 2;
-    return 12742 * Math.asin(Math.sqrt(a));
-  };
-
   const matchDoctors = (doctors: any[], symptoms: string[], therapy: string, radius: number) => {
-    const normalize = (text: string) => text?.toLowerCase().trim();
-    const patientGeo = (user as any)?.geolocation || { lat: 21.1458, lng: 79.0882 };
-
-    const doctorsWithDistance = doctors.map(doc => {
-      let distance = 9999;
-      if (doc.geolocation?.lat && doc.geolocation?.lng && patientGeo) {
-        distance = calculateDistanceKM(patientGeo.lat, patientGeo.lng, doc.geolocation.lat, doc.geolocation.lng);
-      }
-      return { ...doc, distanceKm: distance };
+    return rankDoctorsByClinicalMatch(doctors, {
+      symptoms,
+      requiredTherapy: therapy,
+      radiusKm: radius,
+      patientGeo: (user as any)?.geolocation || null,
+      includeUnknownDistance: !(user as any)?.geolocation,
     });
-
-    const filteredByRadius = doctorsWithDistance.filter(doc => doc.distanceKm <= radius);
-
-    const symptomMap: Record<string, string[]> = {
-      "bloating": ["digestive issues", "gas", "acidity", "gut"],
-      "stress": ["anxiety", "mental stress", "mind"],
-      "fatigue": ["low energy", "tiredness", "exhaustion"],
-      "headache": ["migraine", "head pain"],
-      "insomnia": ["sleep issues", "sleeplessness"],
-      "joint stiffness": ["joint pain", "joint pains", "arthritis", "bones"],
-      "digestive issues": ["bloating", "acidity", "indigestion", "gut"],
-    };
-
-    return filteredByRadius.map(doc => {
-      let score = 0;
-      let expertise: string[] = [];
-
-      if (doc.expertiseSymptoms) {
-        expertise = doc.expertiseSymptoms.map(normalize);
-      } else if (doc.specialization) {
-        let specs = typeof doc.specialization === 'string' ? doc.specialization.split(",") : doc.specialization;
-        expertise = specs.map((s: string) => normalize(s));
-      }
-
-      const therapies = (doc.therapiesOffered || doc.supportedTherapies || []).map((t: string) => normalize(t));
-
-      symptoms.forEach(symptom => {
-        const normalizedSymptom = normalize(symptom);
-        if (expertise.includes(normalizedSymptom)) score += 3;
-        const related = symptomMap[normalizedSymptom] || [];
-        if (related.some((r: string) => expertise.includes(normalize(r)))) score += 2;
-        if (expertise.some((e: string) => e.includes(normalizedSymptom))) score += 1;
-      });
-
-      if (therapy) {
-        const normalizedTherapy = normalize(therapy);
-        if (therapies.some((t: string) => t.includes(normalizedTherapy)) || expertise.some((e: string) => e.includes(normalizedTherapy))) {
-          score += 5;
-        }
-      }
-
-      if (doc.distanceKm <= 5) score += 3;
-      else if (doc.distanceKm <= 15) score += 2;
-      else if (doc.distanceKm <= 30) score += 1;
-
-      return { ...doc, matchScore: score };
-    })
-      .filter(doc => doc.matchScore > 0)
-      .sort((a, b) => b.matchScore - a.matchScore);
   };
 
   const generateLLMRecommendation = async () => {
@@ -180,9 +136,17 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
         name: s, score: formData.symptomScores[s] || 5
       }));
 
+      if (!firebaseUser) {
+        throw new Error("Authentication required for AI recommendation");
+      }
+      const token = await firebaseUser.getIdToken();
+
       const response = await fetch(`${BACKEND_URL}/api/scheduling/predict`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           symptoms: symptomsPayload,
           dosha: formData.constitution,
@@ -213,7 +177,11 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
       }
     } catch (error) {
       console.error("Error generating recommendation:", error);
-      toast({ title: "Connecting AI Engine", description: "Falling back to safe defaults...", variant: "default" });
+      toast({
+        title: language === "hi" ? "AI इंजन से कनेक्ट हो रहा है" : "Connecting AI Engine",
+        description: language === "hi" ? "सुरक्षित डिफ़ॉल्ट का उपयोग किया जा रहा है..." : "Falling back to safe defaults...",
+        variant: "default",
+      });
 
       const fallbackRec = {
         therapy: 'Abhyanga (oil massage) - Fallback',
@@ -263,7 +231,6 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
       const doctorName = formData.selectedDoctor?.name || formData.selectedDoctor?.clinicName || "Doctor";
       const therapy = formData.recommendation?.therapy || "Panchakarma";
       const scheduledSlots = formData.selectedSlots;
-      const priority = formData.recommendation?.totalPriorityScore || 50;
       const severityScore = formData.recommendation?.severity_score || 5;
 
       // 1. Save intake submission record
@@ -279,98 +246,59 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
         createdAt: new Date().toISOString(),
       });
 
-      // 2. Conflict checking — compare slots (string-normalised ISO match)
-      if (scheduledSlots.length > 0) {
-        const q = query(
-          collection(db, 'appointments'),
-          where('doctorId', '==', doctorId),
-          where('status', 'in', ['approved', 'pending'])
-        );
-        const existingSnap = await getDocs(q);
-        const collisions: any[] = [];
-
-        existingSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          const intersection = (data.scheduledSlots || []).filter((slot: string) => scheduledSlots.includes(slot));
-          if (intersection.length > 0) collisions.push({ id: docSnap.id, ...data, collisionSlots: intersection });
+      // 2. Server-side booking: collisions (appointments + sessions), trusted priority, session cascade on bump
+      const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      if (!firebaseUser) {
+        toast({
+          title: language === "hi" ? "प्रमाणीकरण त्रुटि" : "Authentication Error",
+          description: language === "hi" ? "कृपया फिर से साइन इन करें।" : "Please sign in again.",
+          variant: "destructive",
         });
-
-        for (const collision of collisions) {
-          const existingPriority = collision.priority || 50;
-          if (priority > existingPriority) {
-            await updateDoc(doc(db, 'appointments', collision.id), {
-              status: 'reschedule_required',
-              bumpedByPriority: true,
-              bumpMessage: 'A critical case required your time slot. Please reschedule.'
-            });
-          } else {
-            throw new Error("These slots have been taken by a higher priority case. Please select different slots.");
-          }
-        }
+        return;
       }
-
-      // 3. Create appointment record
-      const appointmentRef = await addDoc(collection(db, 'appointments'), {
-        patientId, patientName, patientEmail,
-        doctorId, doctorName,
-        therapy,
-        scheduledSlots,
-        totalSessions: scheduledSlots.length,
-        intakeId: intakeDocRef.id,
-        status: 'pending',
-        priority,
-        dosha: formData.constitution,
-        reason: formData.reason,
-        createdAt: new Date().toISOString(),
-      });
-
-      // 4. Create individual session documents
-      //    ─── FIX #1: All field names now match what DoctorDashboard queries ───
-      //    practitioner_id  (was: doctor_id)
-      //    therapy          (was: therapy_type)
-      //    datetime         (was: scheduled_date)
-      //    status           now 'pending_review' so doctor can approve (was: 'scheduled')
-      //    totalPriorityScore added (was: priority_score only)
-      for (let i = 0; i < scheduledSlots.length; i++) {
-        await addDoc(collection(db, 'sessions'), {
-          patient_id: patientId,
-          patient_name: patientName,
-          patient_email: patientEmail,
-          practitioner_id: doctorId,          // ← was: doctor_id
-          doctor_name: doctorName,
-          appointment_id: appointmentRef.id,
-          intake_id: intakeDocRef.id,
-          therapy: therapy,                   // ← was: therapy_type
-          datetime: scheduledSlots[i],        // ← was: scheduled_date
-          session_number: i + 1,
-          total_sessions: scheduledSlots.length,
-          duration_minutes: therapy.includes('Vamana') ? 120 : 90,
-          status: 'pending_review',           // ← was: 'scheduled'
-          doctor_approval: 'pending',
-          priority: priority,
-          totalPriorityScore: priority,       // ← was: priority_score only
-          severity_score: severityScore,
-          dosha: formData.constitution,       // ← was: dosha_imbalance
+      const token = await firebaseUser.getIdToken();
+      const bookRes = await fetch(`${BACKEND_URL}/api/doctors/book`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          patientId,
+          patientName,
+          patientEmail,
+          doctorId,
+          doctorName,
+          clinicName: formData.selectedDoctor?.clinicName || '',
+          therapy,
+          scheduledSlots,
+          intakeId: intakeDocRef.id,
+          severity: severityScore,
+          dosha: formData.constitution,
           reason: formData.reason,
           clinical_summary: formData.recommendation?.clinical_summary || '',
           precautions_pre: formData.recommendation?.precautions_pre || [],
           precautions_post: formData.recommendation?.precautions_post || [],
-          feedback_escalation: false,
-          feedback_multiplier: 1.0,
-          created_at: new Date().toISOString(),
-        });
+        }),
+      });
+      const bookJson = await bookRes.json().catch(() => ({}));
+      if (!bookRes.ok) {
+        throw new Error(bookJson.error || 'Booking failed');
       }
 
-      // 5. Update the logged-in patient's profile with recommendation
+      // 3. Update the logged-in patient's profile with recommendation
       if (updateUserProfile) {
         await updateUserProfile({
+          // Persist dosha so later booking/discovery flows can compute priority accurately.
+          dosha: formData.constitution,
+          phone: formData.phone,
           reason_for_visit: formData.reason,
           symptoms: symptomsPayload as any,
           llm_recommendation: formData.recommendation || undefined
         });
       }
 
-      toast({ title: "Booking Submitted! 🌿", description: "Your request has been sent for doctor review." });
+      toast({ title: t("schedule.bookingSubmitted"), description: t("schedule.bookingSubmittedDesc") });
 
       const sessionData = {
         patient: formData, doctorId, doctorName, recommendation: formData.recommendation, scheduledSlots
@@ -380,7 +308,11 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
     } catch (e: any) {
       console.error("Complete handle error:", e);
-      toast({ title: "Booking Failed", description: e.message || "An error occurred", variant: "destructive" });
+      toast({
+        title: t("schedule.bookingFailed"),
+        description: e.message || (language === "hi" ? "एक त्रुटि हुई" : "An error occurred"),
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -408,7 +340,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
         <DialogHeader>
           <DialogTitle className="font-playfair text-2xl flex items-center space-x-3">
             <Calendar className="w-6 h-6 text-primary" />
-            <span>Schedule New Session - Step {currentStep} of 5</span>
+            <span>{t("schedule.newSessionStep", { step: currentStep })}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -425,7 +357,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
             <Card className="ayur-card p-6 animate-scale-in">
               <div className="flex items-center space-x-2 mb-4">
                 <User className="w-5 h-5 text-primary" />
-                <h3 className="font-playfair text-xl font-semibold">Patient Information</h3>
+                <h3 className="font-playfair text-xl font-semibold">{t("schedule.patientInfo")}</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Full Name *</Label><Input value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} placeholder="Enter full name" /></div>
@@ -439,7 +371,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
           {currentStep === 2 && (
             <Card className="ayur-card p-6 animate-scale-in">
-              <div className="flex items-center space-x-2 mb-4"><Brain className="w-5 h-5 text-primary" /><h3 className="font-playfair text-xl font-semibold">Symptom Assessment</h3></div>
+              <div className="flex items-center space-x-2 mb-4"><Brain className="w-5 h-5 text-primary" /><h3 className="font-playfair text-xl font-semibold">{t("schedule.symptomAssessment")}</h3></div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {symptomOptions.map((symptom) => (
                   <label key={symptom} className="flex items-center space-x-2 cursor-pointer">
@@ -527,19 +459,41 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
                         setFormData(prev => ({ ...prev, selectedDoctor: doc }));
                         const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
                         try {
+                          if (!firebaseUser) {
+                            throw new Error("Authentication required to check slots");
+                          }
+                          const token = await firebaseUser.getIdToken();
+
                           const slotsResponse = await fetch(`${BACKEND_URL}/api/scheduling/slots`, {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
                             body: JSON.stringify({ practitionerId: doc.id, therapy: formData.recommendation.therapy, spacingDays: formData.recommendation.spacing_days, sessionsNeeded: formData.recommendation.sessions_recommended })
                           });
+                          // If server now rejects auth, the UI falls back to safe defaults.
                           const slotsData = await slotsResponse.json();
-                          if (slotsData.success && slotsData.slots) {
+                          if (slotsResponse.ok && slotsData.success && slotsData.slots) {
                             setMockSlots(slotsData.slots);
                             setFormData(prev => ({ ...prev, selectedSlots: slotsData.slots }));
+                          } else {
+                            // If slot generation fails (e.g. not enough spaced slots), fallback so UI still progresses.
+                            const fallback = generateDefaultSlots();
+                            setMockSlots(fallback);
+                            setFormData(prev => ({ ...prev, selectedSlots: fallback }));
+                            toast({
+                              title: "Limited Availability",
+                              description: "Could not generate spaced availability. Showing safe fallback slots instead.",
+                              variant: "default",
+                            });
                           }
                         } catch (e) {
                           console.error("Using default slots due to network error.");
                           // FIX #6: fallback uses relative dates, not past hardcoded dates
-                          setMockSlots(generateDefaultSlots());
+                          const fallback = generateDefaultSlots();
+                          setMockSlots(fallback);
+                          setFormData(prev => ({ ...prev, selectedSlots: fallback }));
                         }
                         setCurrentStep(5);
                       }}>Book Appointment</Button>
@@ -552,7 +506,7 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
           {currentStep === 5 && (
             <Card className="ayur-card p-6">
-              <div className="flex items-center space-x-2 mb-4"><Calendar className="w-5 h-5 text-primary" /><h3 className="font-playfair text-xl font-semibold">Select Time Slots</h3></div>
+              <div className="flex items-center space-x-2 mb-4"><Calendar className="w-5 h-5 text-primary" /><h3 className="font-playfair text-xl font-semibold">{t("schedule.selectSlots")}</h3></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {mockSlots.slice(0, formData.recommendation?.sessions_recommended || 3).map((slot, index) => (
                   <label key={slot} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:border-primary">
@@ -570,16 +524,16 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
           <div className="flex items-center justify-between pt-6 border-t">
             <Button variant="outline" onClick={currentStep === 1 ? onClose : handleBack} disabled={isLoading}>
-              <ArrowLeft className="w-4 h-4 mr-2" />{currentStep === 1 ? 'Cancel' : 'Back'}
+              <ArrowLeft className="w-4 h-4 mr-2" />{currentStep === 1 ? t("schedule.cancel") : t("schedule.back")}
             </Button>
             {currentStep < 5 ? (
               <Button onClick={handleNext} disabled={!canProceed() || isLoading} className="ayur-button-hero">
-                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Next Step"}
+                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : t("schedule.nextStep")}
                 {!isLoading && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             ) : (
               <Button onClick={handleComplete} disabled={!canProceed() || isLoading} className="ayur-button-accent">
-                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Submit for Doctor Review"}
+                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : t("schedule.submitReview")}
               </Button>
             )}
           </div>

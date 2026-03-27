@@ -10,8 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar as CalendarIcon, Clock, Sparkles, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface SessionSchedulingModalProps {
   isOpen: boolean;
@@ -29,7 +30,8 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
   const [doctors, setDoctors] = useState<any[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
+  const { t, language } = useLanguage();
 
   const therapyOptions = [
     'Panchakarma Detox', 'Abhyanga Massage', 'Shirodhara',
@@ -66,8 +68,8 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
   const handleSchedule = async () => {
     if (!selectedDate || !selectedTime || !therapy || !selectedDoctorId) {
       toast({
-        title: "Please fill all required fields",
-        description: "Date, time, therapy type, and doctor are required.",
+        title: language === "hi" ? "कृपया सभी आवश्यक फ़ील्ड भरें" : "Please fill all required fields",
+        description: language === "hi" ? "तारीख, समय, थेरेपी प्रकार और डॉक्टर आवश्यक हैं।" : "Date, time, therapy type, and doctor are required.",
         variant: "destructive"
       });
       return;
@@ -85,64 +87,47 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
       sessionDatetime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
       const sessionDatetimeISO = sessionDatetime.toISOString();
 
-      // ─── FIX #4: Conflict detection using a ±30-minute window ─────────────
-      // New code loads all scheduled sessions for the assigned doctor and
-      // checks whether any existing session is within 30 minutes of the requested time.
       const assignedDoctorId = selectedDoctorId;
-
-      if (assignedDoctorId) {
-        const existingQ = query(
-          collection(db, 'sessions'),
-          where('practitioner_id', '==', assignedDoctorId),
-          where('status', 'in', ['scheduled', 'pending_review', 'confirmed'])
-        );
-        const existingSnap = await getDocs(existingQ);
-        const THIRTY_MIN_MS = 30 * 60 * 1000;
-        const requestedMs = sessionDatetime.getTime();
-
-        const hasConflict = existingSnap.docs.some(d => {
-          const existing = d.data();
-          // Support both field name variants for robustness
-          const existingDatetimeStr = existing.datetime || existing.scheduled_date;
-          if (!existingDatetimeStr) return false;
-          const existingMs = new Date(existingDatetimeStr).getTime();
-          return Math.abs(existingMs - requestedMs) < THIRTY_MIN_MS;
-        });
-
-        if (hasConflict) {
-          toast({
-            title: "Time Slot Conflict ⚠️",
-            description: "A session already exists within 30 minutes of this time. Please choose a different slot.",
-            variant: "destructive"
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // ─── Create session with standardised field names ─────────────────────
-      const sessionData = {
-        patient_id: user.uid,
-        patient_name: user.name || 'Patient',
-        patient_email: user.email || '',
-        practitioner_id: assignedDoctorId || null,  // ← standardised field name
-        datetime: sessionDatetimeISO,               // ← standardised field name
-        duration_minutes: therapy.includes('Consultation') ? 30 : 60,
-        status: 'pending_review',                   // ← goes through approval flow
-        doctor_approval: 'pending',
-        therapy: therapy,                           // ← standardised field name
-        session_number: 1,
-        notes: notes,
-        priority: priority || 'routine',
-        totalPriorityScore: 50,
-        severity_score: 5,
-        dosha: user.dosha || '',
-        feedback_escalation: false,
-        feedback_multiplier: 1.0,
-        created_at: new Date().toISOString(),
+      const selectedDoctor = doctors.find((d) => d.id === assignedDoctorId);
+      const prioritySeverityMap: Record<string, number> = {
+        routine: 4,
+        urgent: 7,
+        emergency: 9,
       };
 
-      await addDoc(collection(db, 'sessions'), sessionData);
+      if (!firebaseUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+        return;
+      }
+      const token = await firebaseUser.getIdToken();
+
+      // Use authoritative booking API so collisions, priority, and bumps stay consistent.
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${API_BASE}/api/doctors/book`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          patientId: user.uid,
+          patientName: user.name || 'Patient',
+          patientEmail: user.email || '',
+          doctorId: assignedDoctorId,
+          doctorName: selectedDoctor?.name || '',
+          clinicName: selectedDoctor?.clinicName || '',
+          therapy,
+          scheduledSlots: [sessionDatetimeISO],
+          intakeId: null,
+          severity: prioritySeverityMap[priority || 'routine'] || 4,
+          dosha: user.dosha || '',
+          reason: notes || 'Direct scheduling request',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || 'Booking failed');
+      }
 
       // Fire-and-forget notification
       try {
@@ -154,6 +139,11 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
             therapy,
             datetime: sessionDatetimeISO,
             precautions: ["Please arrive 10 minutes early", "Wear loose comfortable clothing", "Stay hydrated"]
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${(await firebaseUser.getIdToken()) || ''}`,
+            },
           }
         );
       } catch (e) {
@@ -161,8 +151,8 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
       }
 
       toast({
-        title: "Session Requested! 🎉",
-        description: `Your ${therapy} session on ${selectedDate.toDateString()} at ${selectedTime} is pending doctor review.`,
+        title: t("schedule.bookingSubmitted"),
+        description: `${therapy} - ${selectedDate.toDateString()} ${selectedTime}. ${t("schedule.bookingSubmittedDesc")}`,
       });
 
       // Reset
@@ -175,7 +165,7 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
       onClose();
     } catch (error: any) {
       console.error("Error scheduling session:", error);
-      toast({ title: "Failed to schedule", description: error.message || "An error occurred.", variant: "destructive" });
+      toast({ title: t("schedule.bookingFailed"), description: error.message || (language === "hi" ? "एक त्रुटि हुई।" : "An error occurred."), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -187,7 +177,7 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-3">
             <CalendarIcon className="w-6 h-6 text-primary" />
-            <span className="font-playfair">Schedule New Session</span>
+            <span className="font-playfair">{t("schedule.newSessionStep", { step: 1 })}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -305,10 +295,10 @@ const SessionSchedulingModal: React.FC<SessionSchedulingModalProps> = ({ isOpen,
 
         {/* Actions */}
         <div className="flex items-center justify-between pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t("schedule.cancel")}</Button>
           <Button onClick={handleSchedule} className="ayur-button-hero" disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CalendarIcon className="w-4 h-4 mr-2" />}
-            {isSubmitting ? "Scheduling..." : "Schedule Session"}
+            {isSubmitting ? (language === "hi" ? "शेड्यूल हो रहा है..." : "Scheduling...") : t("schedule.submitReview")}
           </Button>
         </div>
       </DialogContent>

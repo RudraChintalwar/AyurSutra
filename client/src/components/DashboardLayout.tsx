@@ -3,6 +3,7 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { PractitionerSidebar } from './PractitionerSidebar';
 import { PatientSidebar } from './PatientSidebar';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -15,20 +16,24 @@ import {
   Search,
   Moon,
   Sun,
-  Leaf
+  Leaf,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import LanguageSelector from '@/components/common/LanguageSelector';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { role, user, logout } = useAuth();
+  const { role, user, logout, linkGoogleCalendar, refreshProfile } = useAuth() as any;
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   
   const [notificationCount, setNotificationCount] = useState(0);
@@ -41,10 +46,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       if (!user?.uid) return;
       try {
         const sessionsQuery = role === 'doctor'
-          ? query(collection(db, 'sessions'), where('status', '==', 'scheduled'))
-          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid), where('status', '==', 'scheduled'));
+          ? query(collection(db, 'sessions'))
+          : query(collection(db, 'sessions'), where('patient_id', '==', user.uid));
         const snap = await getDocs(sessionsQuery);
-        setNotificationCount(snap.size);
+        const important = snap.docs.filter((d) => {
+          const st = (d.data() as any)?.status;
+          return ['pending_review', 'confirmed', 'scheduled', 'reschedule_requested'].includes(st);
+        });
+        setNotificationCount(important.length);
       } catch (err) {
         console.error('Error fetching notification count:', err);
       }
@@ -59,10 +68,35 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
+  useEffect(() => {
+    const linked = searchParams.get('calendar_linked');
+    const calErr = searchParams.get('calendar_error');
+    if (linked === '1') {
+      toast({
+        title: t('layout.calendar.connected'),
+        description: t('layout.calendar.connectedDesc'),
+      });
+      refreshProfile?.();
+      const next = new URLSearchParams(searchParams);
+      next.delete('calendar_linked');
+      setSearchParams(next, { replace: true });
+    }
+    if (calErr) {
+      toast({
+        title: t('layout.calendar.failed'),
+        description: decodeURIComponent(calErr),
+        variant: 'destructive',
+      });
+      const next = new URLSearchParams(searchParams);
+      next.delete('calendar_error');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, toast, refreshProfile, t]);
+
   const handleLogout = () => {
     toast({
-      title: "Logging out...",
-      description: "See you again soon!",
+      title: t("layout.logout.title"),
+      description: t("layout.logout.desc"),
     });
     setTimeout(() => {
       logout();
@@ -74,29 +108,30 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle('dark');
     toast({
-      title: darkMode ? "Light mode activated" : "Dark mode activated",
-      description: "Theme preference saved",
+      title: darkMode ? t("layout.theme.light") : t("layout.theme.dark"),
+      description: t("layout.theme.saved"),
     });
   };
 
   const getPageTitle = () => {
     const path = location.pathname;
     const titles: Record<string, string> = {
-      '/patient-dashboard': 'Your Health Journey',
-      '/patient/sessions': 'Treatment Sessions', 
-      '/patient/messages': 'Messages',
-      '/patient/progress': 'Health Progress',
-      '/patient/records': 'Medical Records',
-      '/patient/settings': 'Account Settings',
-      '/doctor-dashboard': 'Practice Overview',
-      '/doctor/patients': 'Patient Management',
-      '/doctor/calendar': 'Schedule & Calendar',
-      '/doctor/messages': 'Patient Communications',
-      '/doctor/analytics': 'Practice Analytics',
-      '/doctor/settings': 'Practice Settings'
+      '/patient-dashboard': t('page.patientDashboard'),
+      '/patient/sessions': t('page.patientSessions'), 
+      '/patient/messages': t('page.patientMessages'),
+      '/patient/progress': t('page.patientProgress'),
+      '/patient/records': t('page.patientRecords'),
+      '/patient/settings': t('page.patientSettings'),
+      '/pulse-monitor': t('page.pulseMonitor'),
+      '/doctor-dashboard': t('page.doctorDashboard'),
+      '/doctor/patients': t('page.doctorPatients'),
+      '/doctor/calendar': t('page.doctorCalendar'),
+      '/doctor/messages': t('page.doctorMessages'),
+      '/doctor/analytics': t('page.doctorAnalytics'),
+      '/doctor/settings': t('page.doctorSettings')
     };
     
-    return titles[path] || 'Dashboard';
+    return titles[path] || t('page.default');
   };
 
   const SidebarComponent = role === 'patient' ? PatientSidebar : PractitionerSidebar;
@@ -104,7 +139,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <LoadingSpinner variant="ayurvedic" size="lg" text="Loading your dashboard..." />
+        <LoadingSpinner variant="ayurvedic" size="lg" text={t("layout.loading")} />
       </div>
     );
   }
@@ -115,6 +150,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         <SidebarComponent />
         
         <div className="flex-1 flex flex-col">
+          {user && user.calendarSyncConnected !== true && (
+            <div className="bg-amber-50/95 border-b border-amber-200 px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-amber-950">
+              <div className="flex items-start gap-2">
+                <CalendarIcon className="w-4 h-4 mt-0.5 shrink-0" />
+                <p>
+                  <span className="font-medium">{t("layout.calendar.linkTitle")}</span> — {t("layout.calendar.linkDesc")}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-300 bg-white shrink-0"
+                onClick={() => linkGoogleCalendar().catch((e: Error) => toast({ variant: 'destructive', title: t('layout.calendar.failed'), description: e.message }))}
+              >
+                {t("layout.calendar.connect")}
+              </Button>
+            </div>
+          )}
           {/* Enhanced Top Header */}
           <header className="h-16 border-b border-border bg-card/95 backdrop-blur-sm sticky top-0 z-40 flex items-center justify-between px-6">
             <div className="flex items-center space-x-4">
@@ -141,6 +194,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Button variant="ghost" size="sm" className="hidden sm:flex">
                 <Search className="w-4 h-4" />
               </Button>
+              <LanguageSelector />
 
               {/* Dark Mode Toggle */}
               <Button variant="ghost" size="sm" onClick={toggleDarkMode}>
@@ -191,7 +245,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                         onClick={() => navigate(`/${role}/settings`)}
                       >
                         <Settings className="w-4 h-4" />
-                        <span>Settings</span>
+                        <span>{t("layout.settings")}</span>
                       </button>
                       <hr className="border-border" />
                       <button 
@@ -199,7 +253,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                         onClick={handleLogout}
                       >
                         <LogOut className="w-4 h-4" />
-                        <span>Sign Out</span>
+                        <span>{t("layout.signOut")}</span>
                       </button>
                     </div>
                   </div>
@@ -228,9 +282,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 © 2025 Panchakarma Management. Bringing ancient wisdom to modern healthcare.
               </p>
               <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                <button className="hover:text-primary transition-colors">Privacy</button>
-                <button className="hover:text-primary transition-colors">Terms</button>
-                <button className="hover:text-primary transition-colors">Support</button>
+                <button className="hover:text-primary transition-colors">{t("layout.privacy")}</button>
+                <button className="hover:text-primary transition-colors">{t("layout.terms")}</button>
+                <button className="hover:text-primary transition-colors">{t("layout.support")}</button>
               </div>
             </div>
           </footer>

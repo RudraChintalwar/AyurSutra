@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   Sidebar,
   SidebarContent,
@@ -22,21 +23,24 @@ import {
   Activity,
   ShoppingBag,
   Stethoscope,
-  Shield
+  Shield,
+  HeartPulse
 } from 'lucide-react';
 
-const patientItems = [
-  { title: 'My Dashboard', url: '/patient-dashboard', icon: LayoutDashboard },
-  { title: 'My Sessions', url: '/patient/sessions', icon: Calendar },
-  { title: 'Diet Planner', url: '/diet-plan', icon: Activity },
-  { title: 'Herbal Remedies', url: '/remedies', icon: Leaf },
-  { title: 'Report Analyzer', url: '/report-analyzer', icon: Stethoscope },
-  { title: 'Medicine Verifier', url: '/medicine-verifier', icon: Shield },
-  { title: 'Ayurvedic Mart', url: '/emart', icon: ShoppingBag },
-  { title: 'Settings', url: '/patient/settings', icon: Settings },
-];
-
 export function PatientSidebar() {
+  const { t } = useLanguage();
+  const patientItems = [
+    { title: t('sidebar.myDashboard'), url: '/patient-dashboard', icon: LayoutDashboard },
+    { title: t('sidebar.mySessions'), url: '/patient/sessions', icon: Calendar },
+    { title: t('sidebar.dietPlanner'), url: '/diet-plan', icon: Activity },
+    { title: t('sidebar.bpmChecker'), url: '/pulse-monitor', icon: HeartPulse },
+    { title: t('sidebar.herbalRemedies'), url: '/remedies', icon: Leaf },
+    { title: t('sidebar.reportAnalyzer'), url: '/report-analyzer', icon: Stethoscope },
+    { title: t('sidebar.medicineVerifier'), url: '/medicine-verifier', icon: Shield },
+    { title: t('sidebar.ayurvedicMart'), url: '/emart', icon: ShoppingBag },
+    { title: t('sidebar.settings'), url: '/patient/settings', icon: Settings },
+  ];
+
   const { state } = useSidebar();
   const navigate = useNavigate();
   const isCollapsed = state === 'collapsed';
@@ -67,10 +71,10 @@ export function PatientSidebar() {
             {!isCollapsed && (
               <div className="text-left">
                 <div className="font-playfair text-lg font-semibold text-primary">
-                  Panchakarma
+                  {t('app.brand')}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Patient Portal
+                  {t('app.patientPortal')}
                 </div>
               </div>
             )}
@@ -79,7 +83,7 @@ export function PatientSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3">
-            {!isCollapsed && 'My Care'}
+            {!isCollapsed && t('sidebar.myCare')}
           </SidebarGroupLabel>
           
           <SidebarGroupContent>

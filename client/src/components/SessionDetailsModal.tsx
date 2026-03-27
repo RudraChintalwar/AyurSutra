@@ -20,9 +20,11 @@ import {
   Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// ─── FIX #3: Import Firestore so actions actually persist ────────────────────
-import { db } from '@/lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface SessionDetailsModalProps {
   isOpen: boolean;
@@ -63,6 +65,8 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
   patient
 }) => {
   const { toast } = useToast();
+  const { firebaseUser } = useAuth();
+  const { t, language } = useLanguage();
   // ─── FIX #3: State for doctor notes on completion ────────────────────────
   const [doctorNotes, setDoctorNotes] = useState('');
   const [isActioning, setIsActioning] = useState(false);
@@ -70,7 +74,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
   if (!session || !patient) return null;
 
   const formatDateTime = (dateTime: string) => {
-    return new Date(dateTime).toLocaleString('en-IN', {
+    return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata'
     });
@@ -81,6 +85,8 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
       case 'completed': return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'scheduled': return <Clock className="w-4 h-4 text-primary" />;
       case 'cancelled': return <AlertTriangle className="w-4 h-4 text-red-600" />;
+      case 'pending_review': return <AlertTriangle className="w-4 h-4 text-yellow-600" />;
+      case 'reschedule_requested': return <AlertTriangle className="w-4 h-4 text-orange-600" />;
       default: return <Clock className="w-4 h-4 text-muted-foreground" />;
     }
   };
@@ -98,12 +104,18 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
 
   // ─── FIX #3: handleCancel now writes to Firestore ────────────────────────
   const handleCancel = async () => {
+    if (!firebaseUser) {
+      toast({ title: 'Sign in required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
     setIsActioning(true);
     try {
-      await updateDoc(doc(db, 'sessions', session.id), {
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-      });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/cancel`,
+        { cancelReason: 'Cancelled by doctor' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       toast({
         title: "Session Cancelled",
         description: "The session has been cancelled and the patient will be notified.",
@@ -121,13 +133,18 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
 
   // ─── FIX #3: handleComplete now writes to Firestore including doctor notes ─
   const handleComplete = async () => {
+    if (!firebaseUser) {
+      toast({ title: 'Sign in required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
     setIsActioning(true);
     try {
-      await updateDoc(doc(db, 'sessions', session.id), {
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        doctor_notes: doctorNotes.trim(),
-      });
+      const token = await firebaseUser.getIdToken();
+      await axios.patch(
+        `${API_URL}/api/sessions/${session.id}/complete`,
+        { doctorNotes: doctorNotes.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       toast({
         title: "Session Marked Complete ✅",
         description: "Session notes saved and status updated.",
@@ -148,7 +165,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-3">
             <Calendar className="w-6 h-6 text-primary" />
-            <span className="font-playfair">Session Details</span>
+            <span className="font-playfair">{t("sessionDetails.title")}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -181,7 +198,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
           {/* Session Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <h4 className="font-playfair text-lg font-semibold">Session Information</h4>
+              <h4 className="font-playfair text-lg font-semibold">{t("sessionDetails.sessionInfo")}</h4>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Status</span>
@@ -212,7 +229,7 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
             </div>
 
             <div className="space-y-4">
-              <h4 className="font-playfair text-lg font-semibold">Treatment Plan</h4>
+              <h4 className="font-playfair text-lg font-semibold">{t("sessionDetails.treatmentPlan")}</h4>
               <div className="p-4 bg-muted/30 rounded-lg">
                 <div className="flex items-start space-x-2 mb-2">
                   <Heart className="w-4 h-4 mt-1 text-primary" />
@@ -269,24 +286,24 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
         {/* Actions */}
         <div className="flex items-center justify-between pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={isActioning}>
-            Close
+            {t("sessionDetails.close")}
           </Button>
 
           <div className="flex space-x-2">
             {(session.status === 'scheduled' || session.status === 'pending_review' || session.status === 'confirmed') && (
               <>
                 <Button variant="outline" onClick={handleReschedule} disabled={isActioning}>
-                  <Edit className="w-4 h-4 mr-2" />Reschedule
+                  <Edit className="w-4 h-4 mr-2" />{t("sessionDetails.reschedule")}
                 </Button>
                 {/* ─── FIX #3: Cancel now actually writes status to Firestore ─── */}
                 <Button variant="outline" onClick={handleCancel} disabled={isActioning} className="text-red-600 hover:text-red-700">
                   {isActioning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                  Cancel
+                  {t("sessionDetails.cancel")}
                 </Button>
                 {/* ─── FIX #3: Complete now actually writes status to Firestore ── */}
                 <Button onClick={handleComplete} disabled={isActioning} className="ayur-button-hero">
                   {isActioning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                  Mark Complete
+                  {t("sessionDetails.markComplete")}
                 </Button>
               </>
             )}

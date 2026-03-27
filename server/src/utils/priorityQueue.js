@@ -100,10 +100,25 @@ const DOSHA_TIME_BLOCKS = {
     vata:  { start: 14, end: 18, label: "2 PM – 6 PM (Afternoon)" },
 };
 
+/** Clock hour in Asia/Kolkata (dosha blocks are conventionally local to patient/clinic). */
+function getHourIST(slotDatetime) {
+    if (!slotDatetime) return null;
+    const d = new Date(slotDatetime);
+    if (Number.isNaN(d.getTime())) return null;
+    const h = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "numeric",
+        hour12: false,
+    }).formatToParts(d).find((p) => p.type === "hour")?.value;
+    const hour = h != null ? parseInt(h, 10) : NaN;
+    return Number.isFinite(hour) ? hour : null;
+}
+
 function getDoshaTimeBonus(dosha, slotDatetime) {
     if (!dosha || !slotDatetime) return 0;
     const doshaLower = dosha.toLowerCase();
-    const hour = new Date(slotDatetime).getHours();
+    const hour = getHourIST(slotDatetime);
+    if (hour === null) return 0;
     for (const [doshaType, block] of Object.entries(DOSHA_TIME_BLOCKS)) {
         if (doshaLower.includes(doshaType) && hour >= block.start && hour < block.end) {
             return 100; // Full bonus — weighted at 15% in the formula
@@ -161,41 +176,108 @@ export function calculatePriorityScore({
     };
 }
 
-// ─── Bump & Reschedule ────────────────────────────────────────────────────────
-// If a high-priority patient (score > 85) needs a slot and the clinic is full:
-//   1. Find the lowest-priority confirmed session on the same day
-//   2. Move it to the next available slot
-//   3. Return both affected sessions so callers can write to Firestore
-export function bumpAndReschedule(highPrioritySession, scheduledSessions, availableSlots = []) {
-    if (highPrioritySession.priorityScore <= 85) {
-        return { bumped: false, reason: "Priority score not high enough for bump (needs >85)" };
-    }
+/** Used by doctor dashboard / escalation routes before calling bumpAndReschedule. */
+export const BUMP_EMERGENCY_MIN_SCORE = 80;
 
-    const targetDate = new Date(highPrioritySession.datetime).toDateString();
+// ─── Bump & Reschedule ────────────────────────────────────────────────────────
+// If a high-priority patient needs a slot: find lowest-priority bumpable session same calendar day (caller TZ context),
+// move it to the next available slot, return payloads for Firestore.
+// Absolute floor (e.g. ≥80) is enforced by callers (check-conflicts, escalation), not here — same rule as /book: incoming > incumbent.
+export function bumpAndReschedule(highPrioritySession, scheduledSessions, availableSlots = []) {
+    const toPriorityNumber = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 50;
+    };
+
+    const effectiveScoreNow = (session) => {
+        // Prefer canonical live inputs when available so wait-time aging is applied.
+        const severityScore = Number(session?.severity_score ?? session?.severityScore ?? 5);
+        const feedbackEscalation = Boolean(session?.feedback_escalation ?? session?.feedbackEscalation ?? false);
+        const feedbackMultiplier = Number(session?.feedback_multiplier ?? session?.feedbackMultiplier ?? 1.0);
+        const dosha = session?.dosha ?? "";
+        const slotDatetime = session?.datetime ?? session?.slotDatetime ?? null;
+        const createdAt = session?.created_at ?? session?.createdAt ?? null;
+
+        // If we can't reliably compute, fall back to stored priority.
+        const canCompute =
+            slotDatetime &&
+            createdAt &&
+            !Number.isNaN(severityScore) &&
+            Number.isFinite(feedbackMultiplier);
+
+        if (canCompute) {
+            return calculatePriorityScore({
+                severityScore: Number.isFinite(severityScore) ? severityScore : 5,
+                feedbackEscalation,
+                feedbackMultiplier: Number.isFinite(feedbackMultiplier) ? feedbackMultiplier : 1.0,
+                dosha: String(dosha || ""),
+                slotDatetime,
+                createdAt,
+            }).totalScore;
+        }
+
+        const rawPri =
+            session?.priorityScore ??
+            session?.totalPriorityScore ??
+            session?.priority;
+        return toPriorityNumber(rawPri);
+    };
+
+    const effectivePriority = effectiveScoreNow(highPrioritySession);
+
+    /** Calendar day in Asia/Kolkata (clinic day), not server local TZ. */
+    const calendarDayKeyIST = (iso) => {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "";
+        return new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(d);
+    };
+    const targetDay = calendarDayKeyIST(highPrioritySession.datetime);
 
     // ─── ISSUE D FIX: include all active statuses, not just 'scheduled' ─────
     // Before: status === "scheduled" — never matched real approved sessions
     // After:  any non-terminal status can be bumped
     const BUMPABLE_STATUSES = new Set(['confirmed', 'scheduled', 'pending_review']);
+    const incomingId = highPrioritySession.sessionId || highPrioritySession.id || null;
     const sameDaySessions = scheduledSessions.filter(s =>
-        new Date(s.datetime).toDateString() === targetDate &&
-        BUMPABLE_STATUSES.has(s.status)
+        calendarDayKeyIST(s.datetime) === targetDay &&
+        BUMPABLE_STATUSES.has(s.status) &&
+        (incomingId ? (s.sessionId || s.id) !== incomingId : true)
     );
 
     if (sameDaySessions.length === 0) {
         return { bumped: false, reason: "No bumpable sessions found on that day" };
     }
 
-    // Find the lowest-priority session
+    // Find the lowest-priority session (dynamic effective score with wait-time aging).
     let lowestPriority = sameDaySessions[0];
     for (const session of sameDaySessions) {
-        const score = session.totalPriorityScore ?? session.priorityScore ?? session.priority ?? 50;
-        const lowest = lowestPriority.totalPriorityScore ?? lowestPriority.priorityScore ?? lowestPriority.priority ?? 50;
-        if (score < lowest) lowestPriority = session;
+        const score = effectiveScoreNow(session);
+        const lowest = effectiveScoreNow(lowestPriority);
+        if (score < lowest) {
+            lowestPriority = session;
+            continue;
+        }
+
+        // Fairness tie-break: when scores are equal, pick the one that has waited longer.
+        if (score === lowest) {
+            const aCreatedAt = session?.created_at ?? session?.createdAt ?? null;
+            const bCreatedAt = lowestPriority?.created_at ?? lowestPriority?.createdAt ?? null;
+            const aMs = aCreatedAt ? new Date(aCreatedAt).getTime() : NaN;
+            const bMs = bCreatedAt ? new Date(bCreatedAt).getTime() : NaN;
+            if (Number.isFinite(aMs) && Number.isFinite(bMs) && aMs < bMs) {
+                lowestPriority = session;
+            }
+        }
     }
 
-    const lowestScore = lowestPriority.totalPriorityScore ?? lowestPriority.priorityScore ?? lowestPriority.priority ?? 50;
-    if (highPrioritySession.priorityScore <= lowestScore) {
+    const lowestScore = effectiveScoreNow(lowestPriority);
+    if (effectivePriority <= lowestScore) {
         return { bumped: false, reason: "High-priority session is not higher than any existing session" };
     }
 
@@ -209,10 +291,11 @@ export function bumpAndReschedule(highPrioritySession, scheduledSessions, availa
         bumpedSession: {
             ...lowestPriority,
             newDatetime: nextSlot || null,
-            reason: `Rescheduled — higher-priority patient (Score: ${highPrioritySession.priorityScore})`,
+            reason: `Rescheduled — higher-priority patient (Score: ${effectivePriority})`,
         },
         insertedSession: {
             ...highPrioritySession,
+            priorityScore: effectivePriority,
             datetime: lowestPriority.datetime, // Takes the freed slot
         },
     };

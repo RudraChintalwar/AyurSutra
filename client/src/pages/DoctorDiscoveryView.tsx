@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, query, where, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
+import { rankDoctorsByClinicalMatch, calculateDistanceKM } from '@/lib/doctorMatching';
 import { Calendar as CalendarIcon, MapPin, Star, User, Stethoscope, Filter, ArrowLeft, Building, ArrowRight, Clock, CheckCircle } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,7 +25,7 @@ import {
 const DoctorDiscoveryView = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const { toast } = useToast();
 
   const [doctors, setDoctors] = useState<any[]>([]);
@@ -47,7 +48,7 @@ const DoctorDiscoveryView = () => {
     gender: 'Any'
   });
 
-  const patientLocation = (user as any)?.geolocation || { lat: 21.1458, lng: 79.0882 };
+  const patientLocation = (user as any)?.geolocation || null;
 
   useEffect(() => {
     fetchEligibleDoctors();
@@ -83,11 +84,43 @@ const DoctorDiscoveryView = () => {
     }
   }, [selectedDate, selectedDoctor]);
 
-  const calculateDistanceKM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const p = 0.017453292519943295;
-    const c = Math.cos;
-    const a = 0.5 - c((lat2 - lat1) * p)/2 + c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p))/2;
-    return 12742 * Math.asin(Math.sqrt(a));
+  const tryGetDrivingDistanceKm = async (
+    origin: { lat: number; lng: number },
+    destinations: Array<{ lat: number; lng: number }>
+  ): Promise<Array<number | null>> => {
+    // Uses Google Maps Distance Matrix if available; otherwise returns nulls.
+    try {
+      const g = (window as any)?.google;
+      if (!g?.maps?.DistanceMatrixService) return destinations.map(() => null);
+
+      const service = new g.maps.DistanceMatrixService();
+      return await new Promise((resolve) => {
+        service.getDistanceMatrix(
+          {
+            origins: [origin],
+            destinations,
+            travelMode: g.maps.TravelMode.DRIVING,
+            unitSystem: g.maps.UnitSystem.METRIC,
+          },
+          (response: any, status: any) => {
+            if (status !== "OK" || !response?.rows?.[0]?.elements) {
+              resolve(destinations.map(() => null));
+              return;
+            }
+            const els = response.rows[0].elements;
+            resolve(
+              els.map((el: any) => {
+                const v = el?.distance?.value;
+                if (!v || !Number.isFinite(Number(v))) return null;
+                return Number(v) / 1000;
+              })
+            );
+          }
+        );
+      });
+    } catch {
+      return destinations.map(() => null);
+    }
   };
 
   const fetchEligibleDoctors = async () => {
@@ -111,12 +144,13 @@ const DoctorDiscoveryView = () => {
           const data = docSnap.data();
 
           let distance = null;
-          if (patientLocation.lat && patientLocation.lng && data.geolocation?.lat && data.geolocation?.lng) {
+          if (patientLocation?.lat && patientLocation?.lng && data.geolocation?.lat && data.geolocation?.lng) {
               distance = calculateDistanceKM(
                   patientLocation.lat, patientLocation.lng,
                   data.geolocation.lat, data.geolocation.lng
               );
-              if (distance > filters.radiusKm) return;
+              // Keep a small slack so driving distance (road) can be computed later.
+              if (distance > filters.radiusKm * 1.5) return;
           }
 
           fetchedDoctors.push({
@@ -130,64 +164,51 @@ const DoctorDiscoveryView = () => {
               gender: data.gender,
               therapies: data.supportedTherapies || [],
               expertiseSymptoms: data.expertiseSymptoms || [],
-              specialization: data.specialization || ''
+              specialization: data.specialization || '',
+              _geo:
+                data.geolocation?.lat && data.geolocation?.lng
+                  ? { lat: data.geolocation.lat, lng: data.geolocation.lng }
+                  : null,
           });
+      });
+
+      // Upgrade distanceKm using Google Maps DRIVING distance when available.
+      // This makes the "radius" based on travel distance (more realistic than straight-line).
+      if (patientLocation?.lat && patientLocation?.lng) {
+        const candidates = fetchedDoctors.filter((d) => d._geo).slice(0, 25);
+        if (candidates.length > 0) {
+          const destinations = candidates.map((d) => d._geo);
+          const drivingDistancesKm = await tryGetDrivingDistanceKm(
+            { lat: patientLocation.lat, lng: patientLocation.lng },
+            destinations
+          );
+          const drivingById = new Map(
+            candidates.map((d, i) => [d.doctorId, drivingDistancesKm[i]])
+          );
+
+          fetchedDoctors = fetchedDoctors.map((d) => {
+            const km = drivingById.get(d.doctorId);
+            if (km === null || km === undefined) return d;
+            return { ...d, distanceKm: Number(km.toFixed(1)) };
+          });
+        }
+      }
+
+      // Enforce the final radius using whichever distanceKm we ended up with.
+      fetchedDoctors = fetchedDoctors.filter((doc) => {
+        if (doc.distanceKm === null) return !patientLocation;
+        return doc.distanceKm <= filters.radiusKm;
       });
 
       const symptoms = state?.aiRecommendation?.symptoms || state?.patientData?.symptoms || [];
-      const normalize = (text: string) => text?.toLowerCase().trim();
-      const symptomMap: Record<string, string[]> = {
-        "bloating": ["digestive issues", "gas", "acidity", "gut"],
-        "stress": ["anxiety", "mental stress", "mind"],
-        "fatigue": ["low energy", "tiredness", "exhaustion"],
-        "headache": ["migraine", "head pain"],
-        "insomnia": ["sleep issues", "sleeplessness"],
-        "joint stiffness": ["joint pain", "joint pains", "arthritis", "bones"],
-        "digestive issues": ["bloating", "acidity", "indigestion", "gut"],
-      };
-
-      const scoredDoctors = fetchedDoctors.map(doc => {
-          let score = 0;
-          let expertise: string[] = [];
-          
-          if (doc.expertiseSymptoms.length > 0) {
-              expertise = doc.expertiseSymptoms.map(normalize);
-          } else if (doc.specialization) {
-              let specs = typeof doc.specialization === 'string' ? doc.specialization.split(",") : doc.specialization;
-              expertise = specs.map((s: string) => normalize(s));
-          }
-
-          const therapies = doc.therapies.map((t: string) => normalize(t));
-
-          symptoms.forEach((symptom: string) => {
-              const norm = normalize(symptom);
-              if (expertise.includes(norm)) score += 3;
-              const related = symptomMap[norm] || [];
-              if (related.some((r: string) => expertise.includes(normalize(r)))) score += 2;
-              if (expertise.some((e: string) => e.includes(norm))) score += 1;
-          });
-
-          if (filters.requiredTherapy) {
-              const nt = normalize(filters.requiredTherapy);
-              if (therapies.some((t: string) => t.includes(nt)) || expertise.some((e: string) => e.includes(nt))) score += 5;
-          }
-
-          if (doc.distanceKm !== null) {
-              if (doc.distanceKm <= 5) score += 3;
-              else if (doc.distanceKm <= 15) score += 2;
-              else if (doc.distanceKm <= 30) score += 1;
-          }
-
-          return { ...doc, matchScore: score };
+      const ranked = rankDoctorsByClinicalMatch(fetchedDoctors, {
+        symptoms,
+        requiredTherapy: filters.requiredTherapy,
+        radiusKm: filters.radiusKm,
+        patientGeo: patientLocation,
+        includeUnknownDistance: !patientLocation,
       });
-
-      scoredDoctors.sort((a, b) => {
-          if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore;
-          if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
-          return 0;
-      });
-
-      setDoctors(scoredDoctors);
+      setDoctors(ranked);
 
     } catch (e) {
       console.error("Doctor Smart Search Error:", e);
@@ -238,80 +259,37 @@ const DoctorDiscoveryView = () => {
         reason: patientData.reason || user?.reason_for_visit || '',
       };
 
-      // 1. Conflict checking and Priority Bumping logic directly in Frontend
-      let bumpedAppointments = [];
-      if (payload.scheduledSlots.length > 0) {
-          const q = query(
-              collection(db, 'appointments'),
-              where('doctorId', '==', payload.doctorId),
-              where('status', 'in', ['approved', 'pending'])
-          );
-          const existingSnap = await getDocs(q);
-          const collisions: any[] = [];
-          
-          existingSnap.forEach(docSnap => {
-              const data = docSnap.data();
-              const intersection = (data.scheduledSlots || []).filter((slot: string) => payload.scheduledSlots.includes(slot));
-              if (intersection.length > 0) {
-                  collisions.push({ id: docSnap.id, ...data, collisionSlots: intersection });
-              }
-          });
-
-          for (const collision of collisions) {
-              const incomingPriority = payload.priority || 50;
-              const existingPriority = collision.priority || 50;
-              
-              if (incomingPriority > existingPriority) {
-                  bumpedAppointments.push(collision);
-                  await updateDoc(doc(db, 'appointments', collision.id), { 
-                      status: 'reschedule_required',
-                      bumpedByPriority: true,
-                      bumpMessage: 'A critical case required your time slot. Please reschedule.'
-                  });
-              } else {
-                  throw new Error("These slots have been taken by a higher priority case. Please select different slots.");
-              }
-          }
+      if (!firebaseUser) {
+        toast({ title: "Authentication Error", description: "Please sign in again.", variant: "destructive" });
+        return;
       }
+      const token = await firebaseUser.getIdToken();
 
-      // 2. Create appointment document
-      const appointmentDoc = {
-          ...payload,
-          totalSessions: payload.scheduledSlots.length,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-      };
-      const appointmentRef = await addDoc(collection(db, 'appointments'), appointmentDoc);
-
-      // 3. Create individual session documents for the doctor's pipeline
-      // BUG 14 FIX: Use standardised field names that match what DoctorDashboard
-      // queries. Old code used doctor_id, therapy_type, scheduled_date,
-      // status:'scheduled', priority_score — all wrong.
-      for (let i = 0; i < payload.scheduledSlots.length; i++) {
-          const slot = payload.scheduledSlots[i];
-          await addDoc(collection(db, 'sessions'), {
-              patient_id: payload.patientId,
-              patient_name: payload.patientName,
-              patient_email: payload.patientEmail,
-              practitioner_id: payload.doctorId,        // ← was: doctor_id
-              doctor_name: selectedDoctor.name,
-              appointment_id: appointmentRef.id,
-              therapy: payload.therapy,                 // ← was: therapy_type
-              datetime: new Date(slot).toISOString(),   // ← was: scheduled_date
-              session_number: i + 1,
-              total_sessions: payload.scheduledSlots.length,
-              duration_minutes: payload.therapy?.includes('Vamana') ? 120 : 90,
-              status: 'pending_review',                 // ← was: 'scheduled'
-              doctor_approval: 'pending',
-              priority: payload.priority,               // ← was: priority_score
-              totalPriorityScore: payload.priority,
-              severity_score: payload.severity || 5,
-              dosha: payload.dosha,                     // ← was: dosha_imbalance
-              reason: payload.reason || '',
-              feedback_escalation: false,
-              feedback_multiplier: 1.0,
-              created_at: new Date().toISOString()
-          });
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const bookRes = await fetch(`${API_BASE}/api/doctors/book`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          patientId: payload.patientId,
+          patientName: payload.patientName,
+          patientEmail: payload.patientEmail,
+          doctorId: payload.doctorId,
+          doctorName: payload.doctorName,
+          clinicName: payload.clinicName,
+          therapy: payload.therapy,
+          scheduledSlots: payload.scheduledSlots,
+          intakeId: payload.intakeId,
+          severity: payload.severity,
+          dosha: payload.dosha,
+          reason: payload.reason,
+        }),
+      });
+      const bookJson = await bookRes.json().catch(() => ({}));
+      if (!bookRes.ok) {
+        throw new Error(bookJson.error || 'Booking failed');
       }
 
       setShowSlotModal(false);
@@ -345,6 +323,11 @@ const DoctorDiscoveryView = () => {
         <p className="text-muted-foreground text-sm mt-2 max-w-2xl">
            Our algorithmic mapping system has pre-selected doctors highly skilled in fulfilling your AI-assigned protocol: <span className="text-accent underline">{filters.requiredTherapy || 'Panchakarma Therapy'}</span>. Customize your constraints below.
         </p>
+        {!patientLocation && (
+          <p className="text-amber-700 text-xs mt-2">
+            Add your location in profile/settings for accurate proximity and radius filtering.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -442,7 +425,11 @@ const DoctorDiscoveryView = () => {
                                     <Building className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-accent" />
                                     <div>
                                         <span className="font-medium">{doc.clinicName}</span><br />
-                                        <span className="text-xs text-gray-500">{doc.address?.area}, {doc.address?.city}</span>
+                                        <span className="text-xs text-gray-500">
+                                          {typeof doc.address === 'string'
+                                            ? doc.address
+                                            : `${doc.address?.area || ''}${doc.address?.city ? ', ' + doc.address.city : ''}`.trim()}
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="flex items-center text-sm text-gray-600">

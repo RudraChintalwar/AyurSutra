@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
 // Pages
@@ -25,6 +26,7 @@ import Progress from "@/pages/Progress";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "@/pages/NotFound";
 import DietPlanner from "@/pages/DietPlanner";
+import PulseMonitor from "@/pages/PulseMonitor";
 import HerbalRemedies from "@/pages/HerbalRemedies";
 import ReportAnalyzer from "@/pages/ReportAnalyzer";
 import MedicineVerifier from "@/pages/MedicineVerifier";
@@ -34,6 +36,8 @@ import EmartProductDetail from "@/pages/emart/EmartProductDetail";
 import EmartCart from "@/pages/emart/EmartCart";
 import EmartCheckout from "@/pages/emart/EmartCheckout";
 import EmartOrders from "@/pages/emart/EmartOrders";
+import EmartAdminDashboard from "@/pages/emart/EmartAdminDashboard";
+import EmartAdminOrderDetail from "@/pages/emart/EmartAdminOrderDetail";
 import ChatbotWidget from "@/components/common/ChatbotWidget";
 
 const queryClient = new QueryClient();
@@ -44,16 +48,17 @@ function ProtectedRoute({
   allowedRoles,
 }: {
   children: React.ReactNode;
-  allowedRoles?: ("patient" | "doctor")[];
+  allowedRoles?: ("patient" | "doctor" | "admin")[];
 }) {
   const { user, loading } = useAuth();
+  const { t } = useLanguage();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-          <p className="text-muted-foreground font-inter">Loading...</p>
+          <p className="text-muted-foreground font-inter">{t("layout.loading")}</p>
         </div>
       </div>
     );
@@ -63,11 +68,9 @@ function ProtectedRoute({
     return <Navigate to="/login" replace />;
   }
 
-  // If user has no role, Firestore might be unavailable — default to patient view
+  // If user has no role, route to login instead of assuming patient.
   if (!user.role) {
-    if (allowedRoles && !allowedRoles.includes("patient")) {
-      return <Navigate to="/patient-dashboard" replace />;
-    }
+    return <Navigate to="/login" replace />;
   }
 
   if (allowedRoles && user.role && !allowedRoles.includes(user.role)) {
@@ -96,6 +99,22 @@ const AppRoutes = () => {
       <Route path="/emart/cart" element={<EmartCart />} />
       <Route path="/emart/checkout" element={<EmartCheckout />} />
       <Route path="/emart/orders" element={<EmartOrders />} />
+      <Route
+        path="/emart/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <EmartAdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/emart/admin/orders/:orderId"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <EmartAdminOrderDetail />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Doctor Routes */}
       <Route
@@ -243,6 +262,17 @@ const AppRoutes = () => {
       />
 
       <Route
+        path="/pulse-monitor"
+        element={
+          <ProtectedRoute allowedRoles={["patient", "doctor"]}>
+            <DashboardLayout>
+              <PulseMonitor />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/remedies"
         element={
           <ProtectedRoute allowedRoles={["patient", "doctor"]}>
@@ -287,18 +317,20 @@ const AppRoutes = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <CartProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppRoutes />
-            <ChatbotWidget />
-          </BrowserRouter>
-        </TooltipProvider>
-      </CartProvider>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <CartProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppRoutes />
+              <ChatbotWidget />
+            </BrowserRouter>
+          </TooltipProvider>
+        </CartProvider>
+      </AuthProvider>
+    </LanguageProvider>
   </QueryClientProvider>
 );
 

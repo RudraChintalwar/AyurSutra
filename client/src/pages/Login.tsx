@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // Keep libraries as a static constant to prevent re-renders
 const GOOGLE_MAPS_LIBRARIES: ("places")[] = ["places"];
@@ -26,8 +27,9 @@ const GOOGLE_MAPS_LIBRARIES: ("places")[] = ["places"];
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════
 const DOCTOR_CODE = "AyurSutraDoc7898";
+const ADMIN_CODE = "AyurSutraAdmin2026";
 
-type UserRole = "patient" | "doctor";
+type UserRole = "patient" | "doctor" | "admin";
 
 // Steps: role → (doctor-code) → details → google-signup
 type SignupStep = "role" | "doctor-code" | "details";
@@ -53,6 +55,7 @@ const Login = () => {
   const { user, signInWithGoogle, registerWithGoogle, updateUserProfile, devTestLogin } =
     useAuth() as any;
   const { toast } = useToast();
+  const { t, language } = useLanguage();
 
   const [loading, setLoading] = useState(false);
 
@@ -122,8 +125,8 @@ const Login = () => {
         setMode("signup");
         setSignupStep("role");
         toast({
-          title: "No account found",
-          description: "It looks like you don't have an account yet. Please sign up first.",
+          title: t("login.noAccount"),
+          description: t("login.noAccountDesc"),
         });
         return;
       }
@@ -131,7 +134,7 @@ const Login = () => {
       setTimeout(() => navigate("/dashboard", { replace: true }), 500);
     } catch (error: any) {
       toast({
-        title: "Google Sign-In Failed",
+        title: t("login.googleFailed"),
         description: error?.message || "Could not sign in with Google.",
         variant: "destructive",
       });
@@ -145,14 +148,19 @@ const Login = () => {
   // ═══════════════════════════════════════════════════
   const goToNextStep = () => {
     if (signupStep === "role") {
-      if (selectedRole === "doctor") {
+      if (selectedRole === "doctor" || selectedRole === "admin") {
         setSignupStep("doctor-code");
       } else {
         setSignupStep("details");
       }
     } else if (signupStep === "doctor-code") {
-      if (doctorCode !== DOCTOR_CODE) {
-        setDoctorCodeError("Invalid verification code. Please contact admin.");
+      const expectedCode = selectedRole === "admin" ? ADMIN_CODE : DOCTOR_CODE;
+      if (doctorCode !== expectedCode) {
+        setDoctorCodeError(
+          language === "hi"
+            ? "अमान्य सत्यापन कोड। कृपया एडमिन से संपर्क करें।"
+            : "Invalid verification code. Please contact admin."
+        );
         return;
       }
       setDoctorCodeError("");
@@ -162,7 +170,7 @@ const Login = () => {
 
   const goToPrevStep = () => {
     if (signupStep === "details") {
-      if (selectedRole === "doctor") {
+      if (selectedRole === "doctor" || selectedRole === "admin") {
         setSignupStep("doctor-code");
       } else {
         setSignupStep("role");
@@ -179,11 +187,11 @@ const Login = () => {
     e.preventDefault();
 
     if (!name.trim()) {
-      toast({ title: "Name required", variant: "destructive" });
+      toast({ title: language === "hi" ? "नाम आवश्यक है" : "Name required", variant: "destructive" });
       return;
     }
 
-    if (selectedRole === "doctor" && !license.trim()) {
+    if ((selectedRole === "doctor" || selectedRole === "admin") && !license.trim()) {
       toast({
         title: "License required",
         description: "Please enter your medical license number.",
@@ -193,7 +201,11 @@ const Login = () => {
     }
 
     if (!locationAddress.trim()) {
-      toast({ title: "Location required", description: "Please provide your location.", variant: "destructive" });
+      toast({
+        title: language === "hi" ? "स्थान आवश्यक है" : "Location required",
+        description: language === "hi" ? "कृपया अपना स्थान दें।" : "Please provide your location.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -206,7 +218,8 @@ const Login = () => {
         phone: phone || undefined,
         location: locationAddress || undefined,
         geolocation: geolocation || undefined,
-        ...(selectedRole === "doctor" ? { clinicAddress: locationAddress, license, specialization } : {}),
+        ...(selectedRole === "doctor" || selectedRole === "admin" ? { clinicAddress: locationAddress, license, specialization } : {}),
+        ...(selectedRole === "admin" ? { isAdmin: true as any } : {}),
       });
 
       if (result.alreadyExists) {
@@ -223,11 +236,11 @@ const Login = () => {
 
       toast({
         title: "Account created! 🌿",
-        description: `Welcome to AyurSutra, ${name}! Your Google Calendar is now connected.`,
+        description: `Welcome, ${name}! Next, connect Google Calendar from your dashboard for session reminders.`,
       });
 
       navigate(
-        selectedRole === "doctor" ? "/doctor-dashboard" : "/patient-dashboard",
+        selectedRole === "doctor" ? "/doctor-dashboard" : selectedRole === "admin" ? "/emart/admin" : "/patient-dashboard",
         { replace: true }
       );
     } catch (error: any) {
@@ -277,7 +290,7 @@ const Login = () => {
             </h1>
           </div>
           <p className="text-muted-foreground text-sm">
-            Ancient Wisdom, Modern Healing
+            {language === "hi" ? "प्राचीन ज्ञान, आधुनिक उपचार" : "Ancient Wisdom, Modern Healing"}
           </p>
         </div>
 
@@ -294,7 +307,7 @@ const Login = () => {
                 setSignupStep("role");
               }}
             >
-              Sign In
+              {t("login.signIn")}
             </button>
             <button
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${mode === "signup"
@@ -303,7 +316,7 @@ const Login = () => {
                 }`}
               onClick={() => setMode("signup")}
             >
-              Sign Up
+              {t("login.signUp")}
             </button>
           </div>
 
@@ -314,10 +327,10 @@ const Login = () => {
             <div className="animate-fade-in space-y-5">
               <div className="text-center">
                 <h3 className="font-playfair text-lg font-semibold mb-1">
-                  Welcome Back
+                  {t("login.welcomeBack")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Sign in with your Google account to continue
+                  {t("login.signInGoogle")}
                 </p>
               </div>
 
@@ -330,7 +343,7 @@ const Login = () => {
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                    Signing in...
+                    {t("login.signingIn")}
                   </span>
                 ) : (
                   <>
@@ -391,7 +404,7 @@ const Login = () => {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <button
                       type="button"
                       onClick={() => setSelectedRole("patient")}
@@ -424,6 +437,23 @@ const Login = () => {
                       <div className="font-semibold text-sm">Doctor</div>
                       <p className="text-xs text-muted-foreground mt-1">
                         Manage patients & therapies
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRole("admin")}
+                      className={`relative p-6 rounded-xl border-2 transition-all duration-300 hover:shadow-md ${selectedRole === "admin"
+                        ? "border-primary bg-primary/5 shadow-md"
+                        : "border-muted hover:border-primary/40"
+                        }`}
+                    >
+                      {selectedRole === "admin" && (
+                        <CheckCircle2 className="absolute top-2 right-2 w-5 h-5 text-primary" />
+                      )}
+                      <Shield className="w-10 h-10 mx-auto mb-3 text-primary" />
+                      <div className="font-semibold text-sm">Admin</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        E-Mart Management
                       </p>
                     </button>
                   </div>

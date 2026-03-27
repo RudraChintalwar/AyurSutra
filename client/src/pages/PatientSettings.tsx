@@ -28,15 +28,18 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PatientSettings = () => {
-  const { user, updateUserProfile } = useAuth();
+  const { user, updateUserProfile, linkGoogleCalendar, unlinkGoogleCalendar } = useAuth();
   const { toast } = useToast();
+  const { t, language } = useLanguage();
   const currentPatient = user as any;
   const [sessionCount, setSessionCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [calBusy, setCalBusy] = useState(false);
 
   useEffect(() => {
     const fetchSessionCount = async () => {
@@ -51,6 +54,35 @@ const PatientSettings = () => {
     };
     fetchSessionCount();
   }, [user]);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!user?.uid) return;
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists()) return;
+        const data: any = snap.data();
+        setProfileData(prev => ({
+          ...prev,
+          name: data.name || prev.name,
+          email: data.email || prev.email,
+          phone: data.phone || prev.phone,
+          gender: data.gender || prev.gender,
+          address: data.location || prev.address,
+          ...data.settings?.profile,
+        }));
+        if (data.settings?.notifications) {
+          setNotifications(prev => ({ ...prev, ...data.settings.notifications }));
+        }
+        if (data.settings?.preferences) {
+          setPreferences(prev => ({ ...prev, ...data.settings.preferences }));
+        }
+      } catch (err) {
+        console.error('Error loading patient settings:', err);
+      }
+    };
+    loadSettings();
+  }, [user?.uid]);
 
   const [profileData, setProfileData] = useState({
     name: currentPatient?.name || '',
@@ -86,7 +118,7 @@ const PatientSettings = () => {
   const handleProfileUpdate = async () => {
     try {
       await updateUserProfile({ name: profileData.name, phone: profileData.phone, gender: profileData.gender });
-      toast({ title: 'Profile Updated', description: 'Your profile has been saved successfully.' });
+      toast({ title: t('patient.profileUpdated'), description: t('patient.profileUpdatedDesc') });
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to update profile.', variant: 'destructive' });
     }
@@ -95,22 +127,25 @@ const PatientSettings = () => {
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
+      await updateUserProfile({
+        name: profileData.name,
+        phone: profileData.phone,
+        gender: profileData.gender,
+        location: profileData.address,
+      } as any);
       if (user?.uid) {
         await updateDoc(doc(db, 'users', user.uid), {
-          name: profileData.name,
-          phone: profileData.phone,
-          gender: profileData.gender,
           settings: {
             profile: profileData,
             notifications,
             preferences,
-          }
+          },
         });
       }
-      toast({ title: 'Settings Saved \u2705', description: 'All your preferences have been updated.' });
+      toast({ title: t('patient.settingsSaved'), description: t('patient.settingsSavedDesc') });
     } catch (err) {
       console.error('Save error:', err);
-      toast({ title: 'Save Failed', description: 'Could not save settings.', variant: 'destructive' });
+      toast({ title: t('patient.saveFailed'), description: t('patient.saveFailedDesc'), variant: 'destructive' });
     } finally {
       setIsSaving(false);
     }
@@ -121,7 +156,7 @@ const PatientSettings = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN');
+    return new Date(dateString).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN');
   };
 
   return (
@@ -130,24 +165,25 @@ const PatientSettings = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Account Settings
+            {t('patient.settingsTitle')}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage your personal information and preferences
+            {t('patient.settingsDesc')}
           </p>
         </div>
         <Button className="ayur-button-accent" onClick={handleSaveAll} disabled={isSaving}>
           {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-          Save All Changes
+          {t('doctor.saveAll')}
         </Button>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 h-auto py-1">
+          <TabsTrigger value="profile">{t('doctor.profile')}</TabsTrigger>
+          <TabsTrigger value="notifications">{t('doctor.notifications')}</TabsTrigger>
+          <TabsTrigger value="calendar">{t('doctor.calendar')}</TabsTrigger>
           <TabsTrigger value="privacy">Privacy</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          <TabsTrigger value="preferences">{t('doctor.preferences')}</TabsTrigger>
         </TabsList>
 
         {/* Profile Settings */}
@@ -526,6 +562,64 @@ const PatientSettings = () => {
               </div>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="calendar" className="space-y-6">
+          <Card className="ayur-card p-6 animate-slide-up max-w-2xl">
+            <h3 className="font-playfair text-xl font-semibold mb-2 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Google Calendar
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Link your primary Google Calendar so confirmed sessions appear there with email and popup reminders. Each user links their own account — events are not shared between calendars.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              {user?.calendarSyncConnected ? (
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200">
+                  Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline">Not connected</Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                className="ayur-button-accent"
+                disabled={calBusy || user?.calendarSyncConnected}
+                onClick={async () => {
+                  setCalBusy(true);
+                  try {
+                    await linkGoogleCalendar();
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : 'Could not start linking';
+                    toast({ title: 'Calendar link failed', description: msg, variant: 'destructive' });
+                    setCalBusy(false);
+                  }
+                }}
+              >
+                {user?.calendarSyncConnected ? 'Already connected' : 'Connect Google Calendar'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={calBusy || !user?.calendarSyncConnected}
+                onClick={async () => {
+                  setCalBusy(true);
+                  try {
+                    await unlinkGoogleCalendar();
+                    toast({ title: 'Disconnected', description: 'Google Calendar is no longer linked.' });
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : 'Disconnect failed';
+                    toast({ title: 'Error', description: msg, variant: 'destructive' });
+                  } finally {
+                    setCalBusy(false);
+                  }
+                }}
+              >
+                {calBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Disconnect
+              </Button>
+            </div>
+          </Card>
         </TabsContent>
 
         {/* System Preferences */}

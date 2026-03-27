@@ -63,7 +63,7 @@ export function startNightlyScoringJob() {
             // ─── FIX #9: Query all active statuses, not the non-existent 'pending' ──
             // Wait-time decay is relevant for any session not yet completed/cancelled.
             const snapshot = await sessionsRef
-                .where('status', 'in', ['pending_review', 'confirmed', 'scheduled'])
+                .where('status', 'in', ['pending_review', 'confirmed', 'scheduled', 'reschedule_requested'])
                 .get();
 
             if (snapshot.empty) {

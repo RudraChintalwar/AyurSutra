@@ -13,6 +13,7 @@ import {
   CheckCircle,
   AlertTriangle
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface FeedbackFormProps {
   sessionId: string;
@@ -31,6 +32,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({
   sessionId, patientId, patientName, patientEmail, therapy, dosha, 
   currentSeverity, allSessions, onSubmit, onCancel 
 }) => {
+  const { firebaseUser } = useAuth();
   const [formData, setFormData] = useState({
     pain: [0],
     digestion: [5],
@@ -80,12 +82,21 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({
 
     try {
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      if (!firebaseUser) {
+        onSubmit({ feedback, llmResponse: { ui_message: 'Please sign in to submit feedback.', action: 'error' } });
+        return;
+      }
+      const idToken = await firebaseUser.getIdToken();
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      };
 
       // If adverse effects detected, use escalation endpoint
       if (feedback.has_adverse_effects) {
         const escalationResponse = await fetch(`${API_URL}/api/scheduling/feedback-escalation`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify({
             sessionId,
             patientId: patientId || '',
@@ -127,7 +138,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({
       // Normal feedback (no adverse effects)
       const response = await fetch(`${API_URL}/api/scheduling/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           sessionId,
           patientName: patientName || 'Patient',

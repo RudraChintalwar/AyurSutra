@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useDoctorData, Session } from '@/hooks/useDoctorData';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const DoctorCalendar = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -31,20 +32,23 @@ const DoctorCalendar = () => {
   const [selectedSession, setSelectedSession] = useState<any>(null);
   
   const { patients, sessions, loading } = useDoctorData();
-  const { getGoogleAccessToken } = useAuth();
+  const { language, t } = useLanguage();
+  const { firebaseUser, user } = useAuth();
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
 
-  // Fetch Google Calendar events
   useEffect(() => {
     const fetchCalendarEvents = async () => {
-      const token = getGoogleAccessToken();
-      if (!token) return;
+      if (!firebaseUser || !user?.calendarSyncConnected) {
+        setCalendarEvents([]);
+        return;
+      }
       setCalendarLoading(true);
       try {
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-        const res = await fetch(`${API_URL}/api/calendar/list-events`, {
-          headers: { 'Authorization': `Bearer ${token}` },
+        const idToken = await firebaseUser.getIdToken();
+        const res = await fetch(`${API_URL}/api/calendar/list-events/me`, {
+          headers: { Authorization: `Bearer ${idToken}` },
         });
         const data = await res.json();
         if (data.success) setCalendarEvents(data.events || []);
@@ -55,10 +59,10 @@ const DoctorCalendar = () => {
       }
     };
     fetchCalendarEvents();
-  }, [getGoogleAccessToken]);
+  }, [firebaseUser, user?.calendarSyncConnected, user?.uid]);
 
   const formatDateTime = (dateTime: string) => {
-    return new Date(dateTime).toLocaleString('en-IN', {
+    return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: 'Asia/Kolkata'
@@ -66,7 +70,7 @@ const DoctorCalendar = () => {
   };
 
   const formatDate = (dateTime: string) => {
-    return new Date(dateTime).toLocaleDateString('en-IN', {
+    return new Date(dateTime).toLocaleDateString(language === "hi" ? 'hi-IN' : 'en-IN', {
       day: 'numeric',
       month: 'short',
       timeZone: 'Asia/Kolkata'
@@ -86,16 +90,38 @@ const DoctorCalendar = () => {
     .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
     .slice(0, 5);
 
+  const ACTIVE_SESSION_STATUSES = ['pending_review', 'confirmed', 'scheduled', 'reschedule_requested'];
+  const CONFLICT_STATUSES = ['reschedule_required', 'reschedule_requested'];
+
+  const getStatusBadgeClasses = (status: string) => {
+    switch (status) {
+      case 'pending_review':
+        return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'confirmed':
+        return 'bg-green-100 text-green-700 border-green-200';
+      case 'scheduled':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'reschedule_requested':
+        return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'reschedule_required':
+        return 'bg-red-100 text-red-700 border-red-200';
+      case 'completed':
+        return 'bg-green-100 text-green-700 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Calendar & Scheduling
+            {t("doctor.calendarTitle")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage appointments and session schedules
+            {t("doctor.calendarDesc")}
           </p>
         </div>
         <Button 
@@ -103,7 +129,7 @@ const DoctorCalendar = () => {
           onClick={() => setIsFullScheduleModalOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
-          Schedule Session
+          {t("doctor.scheduleSession")}
         </Button>
       </div>
 
@@ -122,7 +148,7 @@ const DoctorCalendar = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-primary">{todaysSessions.length}</div>
-              <div className="text-sm text-muted-foreground">Today's Sessions</div>
+              <div className="text-sm text-muted-foreground">{t("doctor.todaySessions")}</div>
             </div>
           </div>
         </Card>
@@ -134,9 +160,9 @@ const DoctorCalendar = () => {
             </div>
             <div>
               <div className="text-2xl font-bold text-accent">
-                {sessions.filter(s => s.status === 'scheduled').length}
+                {sessions.filter(s => ACTIVE_SESSION_STATUSES.includes(s.status)).length}
               </div>
-              <div className="text-sm text-muted-foreground">Scheduled</div>
+              <div className="text-sm text-muted-foreground">{t("doctor.activeNeedsAction")}</div>
             </div>
           </div>
         </Card>
@@ -150,7 +176,7 @@ const DoctorCalendar = () => {
               <div className="text-2xl font-bold text-green-600">
                 {sessions.filter(s => s.status === 'completed').length}
               </div>
-              <div className="text-sm text-muted-foreground">Completed</div>
+              <div className="text-sm text-muted-foreground">{t("patient.completed")}</div>
             </div>
           </div>
         </Card>
@@ -161,8 +187,10 @@ const DoctorCalendar = () => {
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-red-600">0</div>
-              <div className="text-sm text-muted-foreground">Conflicts</div>
+              <div className="text-2xl font-bold text-red-600">
+                {sessions.filter(s => CONFLICT_STATUSES.includes(s.status)).length}
+              </div>
+              <div className="text-sm text-muted-foreground">{t("doctor.rescheduleItems")}</div>
             </div>
           </div>
         </Card>
@@ -200,7 +228,7 @@ const DoctorCalendar = () => {
               <div className="text-sm font-medium text-muted-foreground">Legend</div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <span>Scheduled</span>
+                <span>Pending/Confirmed/Scheduled</span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-green-600 rounded-full"></div>
@@ -208,7 +236,11 @@ const DoctorCalendar = () => {
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-                <span>High Priority</span>
+                <span>Reschedule Required</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                <span>Reschedule Requested</span>
               </div>
             </div>
           </Card>
@@ -268,8 +300,8 @@ const DoctorCalendar = () => {
                         </div>
                         <div className="text-right">
                           <Badge 
-                            variant={session.status === 'completed' ? 'default' : 'outline'}
-                            className="text-xs mb-1"
+                            variant="outline"
+                            className={`text-xs mb-1 ${getStatusBadgeClasses(session.status)}`}
                           >
                             {session.status}
                           </Badge>
@@ -467,8 +499,16 @@ const DoctorCalendar = () => {
                   {/* Render sessions that fall in this time slot */}
                   {todaysSessions
                     .filter(session => {
-                      const sessionHour = new Date(session.datetime).getHours();
-                      return sessionHour === 9 + i;
+                      const h = new Date(session.datetime);
+                      const istHour = parseInt(
+                        h.toLocaleString("en-GB", {
+                          timeZone: "Asia/Kolkata",
+                          hour: "numeric",
+                          hour12: false,
+                        }),
+                        10
+                      );
+                      return istHour === 9 + i;
                     })
                     .map(session => {
                       const patient = patients.find(p => p.id === session.patient_id);

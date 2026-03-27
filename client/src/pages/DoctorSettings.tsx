@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -31,18 +32,20 @@ import {
 } from 'lucide-react';
 
 const DoctorSettings = () => {
-  const { user } = useAuth();
+  const { user, linkGoogleCalendar, unlinkGoogleCalendar } = useAuth();
+  const { t } = useLanguage();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [calBusy, setCalBusy] = useState(false);
   const [profileData, setProfileData] = useState({
-    name: user?.name || 'Dr. Sargun Mehta',
-    email: user?.email || 'sargun.mehta@panchakarma.com',
-    phone: '+91-9000000001',
-    specialty: 'Panchakarma Specialist',
-    experience: '15 years',
-    license: 'AYU-MH-2008-12345',
-    clinic: 'Ayur Wellness Center',
-    address: 'Mumbai, Maharashtra, India'
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: (user as any)?.phone || '',
+    specialty: '',
+    experience: '',
+    license: '',
+    clinic: '',
+    address: ''
   });
 
   const [notifications, setNotifications] = useState({
@@ -100,10 +103,10 @@ const DoctorSettings = () => {
           }
         });
       }
-      toast({ title: 'Settings Saved ✅', description: 'Your preferences have been updated.' });
+      toast({ title: t('doctor.settingsSaved'), description: t('doctor.settingsSavedDesc') });
     } catch (err) {
       console.error('Save error:', err);
-      toast({ title: 'Save Failed', description: 'Could not save settings.', variant: 'destructive' });
+      toast({ title: t('doctor.saveFailed'), description: t('doctor.saveFailedDesc'), variant: 'destructive' });
     } finally {
       setIsSaving(false);
     }
@@ -118,24 +121,25 @@ const DoctorSettings = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-playfair text-3xl font-bold text-primary">
-            Settings & Preferences
+            {t('doctor.settingsTitle')}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Customize your practice profile and system preferences
+            {t('doctor.settingsDesc')}
           </p>
         </div>
         <Button className="ayur-button-accent" onClick={handleSaveAll} disabled={isSaving}>
           {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-          Save All Changes
+          {t('doctor.saveAll')}
         </Button>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 h-auto py-1">
+          <TabsTrigger value="profile">{t('doctor.profile')}</TabsTrigger>
+          <TabsTrigger value="notifications">{t('doctor.notifications')}</TabsTrigger>
+          <TabsTrigger value="schedule">{t('doctor.schedule')}</TabsTrigger>
+          <TabsTrigger value="calendar">{t('doctor.calendar')}</TabsTrigger>
+          <TabsTrigger value="preferences">{t('doctor.preferences')}</TabsTrigger>
         </TabsList>
 
         {/* Profile Settings */}
@@ -363,6 +367,64 @@ const DoctorSettings = () => {
                   )}
                 </div>
               ))}
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="calendar" className="space-y-6">
+          <Card className="ayur-card p-6 animate-slide-up max-w-2xl">
+            <h3 className="font-playfair text-xl font-semibold mb-2 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Google Calendar
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Connect your primary calendar so approved sessions sync with your reminders. Patients link their own accounts separately.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              {user?.calendarSyncConnected ? (
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200">
+                  Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline">Not connected</Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                className="ayur-button-accent"
+                disabled={calBusy || user?.calendarSyncConnected}
+                onClick={async () => {
+                  setCalBusy(true);
+                  try {
+                    await linkGoogleCalendar();
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : 'Could not start linking';
+                    toast({ title: 'Calendar link failed', description: msg, variant: 'destructive' });
+                    setCalBusy(false);
+                  }
+                }}
+              >
+                {user?.calendarSyncConnected ? 'Already connected' : 'Connect Google Calendar'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={calBusy || !user?.calendarSyncConnected}
+                onClick={async () => {
+                  setCalBusy(true);
+                  try {
+                    await unlinkGoogleCalendar();
+                    toast({ title: 'Disconnected', description: 'Google Calendar is no longer linked.' });
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : 'Disconnect failed';
+                    toast({ title: 'Error', description: msg, variant: 'destructive' });
+                  } finally {
+                    setCalBusy(false);
+                  }
+                }}
+              >
+                {calBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Disconnect
+              </Button>
             </div>
           </Card>
         </TabsContent>

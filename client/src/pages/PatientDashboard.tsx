@@ -26,6 +26,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PatientDashboard = () => {
   const [isSchedulingModalOpen, setIsSchedulingModalOpen] = useState(false);
@@ -36,9 +37,10 @@ const PatientDashboard = () => {
   const [showSchedulingWizard, setShowSchedulingWizard] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t, language } = useLanguage();
 
   const [patientSessions, setPatientSessions] = useState<any[]>([]);
-  const { user, getGoogleAccessToken } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
 
@@ -73,16 +75,18 @@ const PatientDashboard = () => {
     }
   };
 
-  // Fetch Google Calendar events
   useEffect(() => {
     const fetchCalendarEvents = async () => {
-      const token = getGoogleAccessToken();
-      if (!token) return;
+      if (!firebaseUser || !user?.calendarSyncConnected) {
+        setCalendarEvents([]);
+        return;
+      }
       setCalendarLoading(true);
       try {
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-        const res = await fetch(`${API_URL}/api/calendar/list-events`, {
-          headers: { 'Authorization': `Bearer ${token}` },
+        const idToken = await firebaseUser.getIdToken();
+        const res = await fetch(`${API_URL}/api/calendar/list-events/me`, {
+          headers: { Authorization: `Bearer ${idToken}` },
         });
         const data = await res.json();
         if (data.success) setCalendarEvents(data.events || []);
@@ -93,7 +97,7 @@ const PatientDashboard = () => {
       }
     };
     fetchCalendarEvents();
-  }, [getGoogleAccessToken]);
+  }, [firebaseUser, user?.calendarSyncConnected, user?.uid]);
 
   const handleSessionClick = (session: any) => {
     setSelectedSession(session);
@@ -102,8 +106,8 @@ const PatientDashboard = () => {
 
   const handleScheduleSession = () => {
     toast({
-      title: "Scheduling Session",
-      description: "Redirecting to booking page...",
+      title: t("patient.schedulingSession"),
+      description: t("patient.redirectBooking"),
     });
     navigate('/patient/sessions');
   };
@@ -114,8 +118,8 @@ const PatientDashboard = () => {
 
   const handleViewProgress = () => {
     toast({
-      title: "Viewing Progress",
-      description: "Loading your health progress...",
+      title: t("patient.viewingProgress"),
+      description: t("patient.loadingProgress"),
     });
     navigate('/patient/records');
   };
@@ -131,7 +135,7 @@ const PatientDashboard = () => {
   };
 
   const formatDateTime = (dateTime: string) => {
-    return new Date(dateTime).toLocaleString('en-IN', {
+    return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
@@ -141,10 +145,48 @@ const PatientDashboard = () => {
   };
 
   const upcomingSessions = patientSessions.filter(s =>
-    ['scheduled', 'confirmed', 'pending_review', 'bumped', 'reschedule_requested'].includes(s.status)
+    ['scheduled', 'confirmed', 'pending_review', 'reschedule_requested', 'bumped'].includes(s.status)
   );
   const completedSessions = patientSessions.filter(s => s.status === 'completed');
   const cancelledSessions = patientSessions.filter(s => s.status === 'cancelled' || s.status === 'rejected');
+
+  const bpmHistory = useMemo(() => {
+    const raw = Array.isArray((currentPatient as any)?.bpm_history) ? (currentPatient as any).bpm_history : [];
+    return raw
+      .filter((x: any) => Number.isFinite(Number(x?.bpm)))
+      .map((x: any) => ({
+        bpm: Number(x.bpm),
+        measuredAt: x.measured_at ? new Date(x.measured_at) : null,
+      }))
+      .slice(-12);
+  }, [currentPatient]);
+
+  const bpmStats = useMemo(() => {
+    if (bpmHistory.length === 0) return null;
+    const values = bpmHistory.map((x: any) => x.bpm);
+    const latest = values[values.length - 1];
+    const avg = Math.round(values.reduce((a: number, b: number) => a + b, 0) / values.length);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return { latest, avg, min, max };
+  }, [bpmHistory]);
+
+  const bpmSparklinePoints = useMemo(() => {
+    if (bpmHistory.length < 2) return "";
+    const w = 320;
+    const h = 80;
+    const vals = bpmHistory.map((x: any) => x.bpm);
+    const minV = Math.min(...vals);
+    const maxV = Math.max(...vals);
+    const range = Math.max(maxV - minV, 1);
+    return vals
+      .map((v: number, i: number) => {
+        const x = (i / Math.max(vals.length - 1, 1)) * w;
+        const y = h - ((v - minV) / range) * h;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [bpmHistory]);
 
   return (
     <div className="p-6 space-y-6">
@@ -159,14 +201,14 @@ const PatientDashboard = () => {
           </Avatar>
           <div>
             <h1 className="font-playfair text-3xl font-bold text-primary mb-2">
-              Welcome back, {currentPatient?.name}
+              {t("patient.welcomeBack", { name: currentPatient?.name || "" })}
             </h1>
             <div className="flex items-center space-x-3">
               <Badge className={`${getDoshaBadge(currentPatient?.dosha || '')} px-3 py-1`}>
-                {currentPatient?.dosha} Constitution
+                {t("patient.constitution", { dosha: currentPatient?.dosha || "" })}
               </Badge>
               <div className="text-sm text-muted-foreground">
-                Patient ID: {currentPatient?.uid?.substring(0, 8)}...
+                {t("patient.patientId", { id: `${currentPatient?.uid?.substring(0, 8)}...` })}
               </div>
             </div>
           </div>
@@ -176,13 +218,13 @@ const PatientDashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="text-center p-3 bg-primary/5 rounded-lg">
             <div className="text-2xl font-bold text-primary">{patientSessions.length}</div>
-            <div className="text-sm text-muted-foreground">Total Sessions</div>
+            <div className="text-sm text-muted-foreground">{t("patient.totalSessions")}</div>
           </div>
           <div className="text-center p-3 bg-accent/5 rounded-lg">
             <div className="text-2xl font-bold text-accent">
               {completedSessions.length}
             </div>
-            <div className="text-sm text-muted-foreground">Completed</div>
+            <div className="text-sm text-muted-foreground">{t("patient.completed")}</div>
           </div>
             <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
               <div className="text-2xl font-bold text-ayur-soft-gold">
@@ -190,18 +232,75 @@ const PatientDashboard = () => {
                   ? Math.min(Math.round((completedSessions.length / (currentPatient.llm_recommendation.sessions_recommended || 1)) * 100), 100)
                   : (patientSessions.length > 0 ? Math.round((completedSessions.length / patientSessions.length) * 100) : 0)}%
               </div>
-              <div className="text-sm text-muted-foreground">Recovery Progress</div>
+              <div className="text-sm text-muted-foreground">{t("patient.recoveryProgress")}</div>
             </div>
           <div className="text-center p-3 bg-green-50 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
               {currentPatient?.llm_recommendation?.priority_score || 'N/A'}
             </div>
-            <div className="text-sm text-muted-foreground">Current Priority</div>
+            <div className="text-sm text-muted-foreground">{t("patient.currentPriority")}</div>
           </div>
         </div>
       </div>
 
       {!currentPatient?.quizCompleted && <DoshaQuiz />}
+
+      <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.04s' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-playfair text-xl font-semibold flex items-center">
+            <Heart className="w-5 h-5 mr-2 text-primary" />
+            {t("patient.heartRateTrend")}
+          </h3>
+          <Button variant="outline" size="sm" onClick={() => navigate('/pulse-monitor')}>
+            {t("patient.openBpmChecker")}
+          </Button>
+        </div>
+
+        {!bpmStats ? (
+          <div className="text-sm text-muted-foreground">
+            {t("patient.noBpmHistory")}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="text-center p-3 bg-primary/5 rounded-lg">
+                <div className="text-xl font-bold text-primary">{bpmStats.latest}</div>
+                <div className="text-xs text-muted-foreground">{t("patient.latestBpm")}</div>
+              </div>
+              <div className="text-center p-3 bg-accent/5 rounded-lg">
+                <div className="text-xl font-bold text-accent">{bpmStats.avg}</div>
+                <div className="text-xs text-muted-foreground">{t("patient.average")}</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-xl font-bold text-green-600">{bpmStats.min}</div>
+                <div className="text-xs text-muted-foreground">{t("patient.min")}</div>
+              </div>
+              <div className="text-center p-3 bg-amber-50 rounded-lg">
+                <div className="text-xl font-bold text-amber-600">{bpmStats.max}</div>
+                <div className="text-xs text-muted-foreground">{t("patient.max")}</div>
+              </div>
+            </div>
+
+            {bpmHistory.length > 1 ? (
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <svg viewBox="0 0 320 80" className="w-full h-20">
+                  <polyline
+                    points={bpmSparklinePoints}
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {t("patient.lastMeasurements", { count: bpmHistory.length })}
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+      </Card>
 
       {/* ─── Book New Session CTA ───────────── */}
       <Card 
@@ -215,9 +314,9 @@ const PatientDashboard = () => {
               <Calendar className="w-8 h-8 text-primary" />
             </div>
             <div>
-              <h3 className="font-playfair text-xl font-semibold text-primary">Book New Panchakarma Session</h3>
+              <h3 className="font-playfair text-xl font-semibold text-primary">{t("patient.bookNewSession")}</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Complete health assessment → AI recommendation → Schedule therapy sessions
+                {t("patient.bookNewSessionDesc")}
               </p>
             </div>
           </div>
@@ -233,7 +332,7 @@ const PatientDashboard = () => {
         <Card className="ayur-card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
           <h3 className="font-playfair text-xl font-semibold mb-4 flex items-center">
             <Calendar className="w-5 h-5 mr-2 text-primary" />
-            Upcoming Sessions
+            {t("patient.upcomingSessions")}
           </h3>
           <div className="space-y-3">
             {upcomingSessions.length > 0 ? (
@@ -250,7 +349,7 @@ const PatientDashboard = () => {
                       {formatDateTime(session.datetime)}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Session {session.session_number} • {session.duration_minutes} minutes
+                      {t("patient.sessionNumDuration", { num: session.session_number, minutes: session.duration_minutes })}
                     </div>
                   </div>
                   <div className="text-right flex flex-col items-end gap-1">
@@ -268,7 +367,7 @@ const PatientDashboard = () => {
                        '📅 Scheduled'}
                     </Badge>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Click to view details
+                      {t("patient.clickDetails")}
                     </div>
                   </div>
                 </div>
@@ -276,9 +375,9 @@ const PatientDashboard = () => {
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No upcoming sessions scheduled</p>
+                <p>{t("patient.noUpcoming")}</p>
                 <Button className="mt-3" variant="outline" size="sm" onClick={handleScheduleSession}>
-                  Schedule New Session
+                  {t("patient.scheduleNewSession")}
                 </Button>
               </div>
             )}
@@ -294,7 +393,7 @@ const PatientDashboard = () => {
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
             </svg>
-            Google Calendar
+            {t("patient.googleCalendar")}
           </h3>
 
           {calendarLoading ? (
@@ -312,7 +411,7 @@ const PatientDashboard = () => {
                     <div className="font-medium text-sm text-foreground">{event.summary}</div>
                     <div className="text-xs text-muted-foreground flex items-center mt-1">
                       <Clock className="w-3 h-3 mr-1" />
-                      {new Date(event.start).toLocaleString('en-IN', {
+                      {new Date(event.start).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
                         day: 'numeric', month: 'short',
                         hour: '2-digit', minute: '2-digit',
                         timeZone: 'Asia/Kolkata'
@@ -490,7 +589,7 @@ const PatientDashboard = () => {
 
       {/* Quick Actions & Ayurvedic Features */}
       <h3 className="font-playfair text-xl font-semibold mt-8 mb-4">Ayurvedic Ecosystem</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Button className="h-24 justify-start p-4 hover:scale-105 transition-transform border-primary/20 hover:border-primary/50" variant="outline" onClick={() => navigate('/ayurvedic-mart')}>
           <div className="flex flex-col items-start gap-2">
             <span className="text-2xl drop-shadow-sm">🛒</span>
@@ -517,6 +616,16 @@ const PatientDashboard = () => {
             <div className="text-left w-full">
               <div className="font-semibold text-primary text-sm">Diet Planner</div>
               <div className="text-xs text-muted-foreground truncate">Dosha nutrition</div>
+            </div>
+          </div>
+        </Button>
+
+        <Button className="h-24 justify-start p-4 hover:scale-105 transition-transform border-primary/20 hover:border-primary/50" variant="outline" onClick={() => navigate('/pulse-monitor')}>
+          <div className="flex flex-col items-start gap-2">
+            <span className="text-2xl drop-shadow-sm">🫀</span>
+            <div className="text-left w-full">
+              <div className="font-semibold text-primary text-sm">BPM Checker</div>
+              <div className="text-xs text-muted-foreground truncate">Heart rate monitor</div>
             </div>
           </div>
         </Button>
