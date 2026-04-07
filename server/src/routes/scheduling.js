@@ -4,6 +4,7 @@ import { calculatePriorityScore, buildPriorityQueue, bumpAndReschedule, MaxHeap,
 import { sendEmail } from "./notifications.js";
 import { admin } from "../middleware/auth.js";
 import * as slotBlocks from "../services/slotBlockService.js";
+import { rebuildDoctorDayQueue, istDayKeyFromIso } from "../services/doctorDayQueue.js";
 import {
     insertAyurSutraCalendarEventForUser,
     insertAyurSutraCalendarEventWithAccessToken,
@@ -95,38 +96,10 @@ function makeUtcIsoFromIstParts({ year, month, day, hour, minute }) {
 }
 
 async function getDoctorBlockedMinuteKeys(doctorId) {
-    if (!doctorId) return new Set();
-    const snap = await firestoreDb
-        .collection(slotBlocks.SCHEDULE_SLOT_BLOCKS)
-        .where("doctorId", "==", doctorId)
-        .get();
-    const keys = new Set();
-    snap.forEach((d) => {
-        const data = d.data() || {};
-        const iso = data.startIso;
-        const baseKey = minuteKey(iso);
-        if (baseKey === null) return;
-
-        // Backfill compatibility: earlier versions only blocked the start minute.
-        // Expand blocked start times according to duration minutes.
-        const dur =
-            Number(data.durationMinutes ?? data.duration_minutes) ||
-            (String(data.therapy || "").includes("Vamana") ? 120 : 90);
-
-        const stepMs = 30 * 60000;
-        const startMs = new Date(iso).getTime();
-        if (Number.isNaN(startMs)) {
-            keys.add(baseKey);
-            return;
-        }
-        const count = Math.ceil(dur / 30);
-        for (let i = 0; i < count; i++) {
-            const nextIso = new Date(startMs + i * stepMs).toISOString();
-            const nextKey = minuteKey(nextIso);
-            if (nextKey !== null) keys.add(nextKey);
-        }
-    });
-    return keys;
+    // Deprecated: slotBlocks are no longer a source of truth for scheduling.
+    // Availability is determined from sessions via rebuildDoctorDayQueue().
+    // Keep as empty set so slot generation doesn't get blocked by stale slot blocks.
+    return new Set();
 }
 
 async function buildDoctorCandidateSlotsAfter(doctorId, afterIso, days = 14) {
@@ -135,7 +108,9 @@ async function buildDoctorCandidateSlotsAfter(doctorId, afterIso, days = 14) {
     const blocked = await getDoctorBlockedMinuteKeys(doctorId);
 
     const out = [];
-    // Generate 30-min slots within 9:00–17:00 IST, skip weekends.
+    // Strict 90-minute slot grid (no 30-minute starts):
+    // Work: 9:00–18:00, Lunch: 13:30–14:00
+    // Valid starts: 09:00, 10:30, 12:00, 14:00, 15:30
     const startDate = new Date(afterMs);
     for (let i = 0; i <= days; i++) {
         const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
@@ -145,21 +120,33 @@ async function buildDoctorCandidateSlotsAfter(doctorId, afterIso, days = 14) {
         const weekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short" }).format(d);
         if (weekday === "Sat" || weekday === "Sun") continue;
 
-        for (let hour = 9; hour < 17; hour++) {
-            for (const minute of [0, 30]) {
-                const iso = makeUtcIsoFromIstParts({
-                    year: ist.year,
-                    month: ist.month,
-                    day: ist.day,
-                    hour,
-                    minute,
-                });
-                const ms = new Date(iso).getTime();
-                if (ms <= afterMs) continue;
-                const k = minuteKey(iso);
-                if (k === null || blocked.has(k)) continue;
-                out.push(iso);
-            }
+        const allowedStarts = [
+            { hour: 9, minute: 0 },
+            { hour: 10, minute: 30 },
+            { hour: 12, minute: 0 },
+            { hour: 14, minute: 0 },
+            { hour: 15, minute: 30 },
+        ];
+
+        for (const st of allowedStarts) {
+            const iso = makeUtcIsoFromIstParts({
+                year: ist.year,
+                month: ist.month,
+                day: ist.day,
+                hour: st.hour,
+                minute: st.minute,
+            });
+            const ms = new Date(iso).getTime();
+            if (ms <= afterMs) continue;
+            const candidateIst = dateToISTParts(new Date(ms));
+            const startMin = candidateIst.hour * 60 + candidateIst.minute;
+            const endMin = startMin + 90;
+            const overlapsLunch = startMin < 14 * 60 && endMin > (13 * 60 + 30);
+            const outsideWork = startMin < 9 * 60 || endMin > 18 * 60;
+            if (outsideWork || overlapsLunch) continue;
+            const k = minuteKey(iso);
+            if (k === null || blocked.has(k)) continue;
+            out.push(iso);
         }
     }
     return out;
@@ -208,6 +195,9 @@ async function applyBumpToFirestore(bumpResult, auth = {}) {
     const now = new Date().toISOString();
     const batch = firestoreDb.batch();
 
+    // Priority bumps must auto-reschedule immediately (no "reschedule_requested").
+    const bumpedNextStatus = ["confirmed", "scheduled"].includes(String(bumped?.status)) ? "scheduled" : "pending_review";
+
     const bumpedDoctorId = bumped.practitioner_id || bumped.doctorId;
     if (bumpedDoctorId) {
         slotBlocks.addDeletesForDoctorSlots(
@@ -226,7 +216,7 @@ async function applyBumpToFirestore(bumpResult, auth = {}) {
             priority: Number(bumped.totalPriorityScore ?? bumped.priority) || 50,
             therapy: bumped.therapy || null,
             durationMinutes: bumpedDurationMinutes,
-            status: "reschedule_requested",
+            status: bumpedNextStatus,
             updatedAt: now,
         });
     }
@@ -255,10 +245,13 @@ async function applyBumpToFirestore(bumpResult, auth = {}) {
     }
 
     batch.update(bumpedRef, {
-        status: "reschedule_requested",
+        status: bumpedNextStatus,
         bumped_reason: bumpResult?.bumpedSession?.reason || "Rescheduled due to higher-priority case",
         original_datetime: bumped.datetime,
         datetime: newDatetime,
+        auto_rescheduled: true,
+        auto_rescheduled_from: bumped.datetime,
+        auto_rescheduled_at: now,
         updated_at: now,
     });
     batch.update(insertedRef, {
@@ -509,10 +502,22 @@ router.post("/slots", verifyFirebaseIdToken, async (req, res) => {
                 durationBlocked,
             });
 
-            // Advance cursor by spacingDays (keep the chosen time-of-day).
-            const next = new Date(chosenIso);
-            next.setDate(next.getDate() + actualSpacing);
-            cursor = next;
+            // Advance cursor by spacingDays, but reset the time-of-day so the next
+            // day starts from the beginning of the slot grid (prevents "drift"
+            // like 9:00 -> 9:30 -> 10:00 across multiple sessions).
+            const nextDay = new Date(chosenIso);
+            nextDay.setDate(nextDay.getDate() + actualSpacing);
+            const istNext = dateToISTParts(nextDay);
+            // Use a time slightly before 09:00 so the 09:00 candidate isn't skipped
+            // by the `ms <= afterMs` check in buildDoctorCandidateSlotsAfter().
+            const cursorIso = makeUtcIsoFromIstParts({
+                year: istNext.year,
+                month: istNext.month,
+                day: istNext.day,
+                hour: 8,
+                minute: 30,
+            });
+            cursor = new Date(cursorIso);
         }
 
         if (slots.length < totalNeeded) {
@@ -645,11 +650,86 @@ router.post("/appointments/:id/review", verifyFirebaseIdToken, requireDoctor, as
             });
         }
 
+        const SLOT_DURATION_MINUTES = 90;
+        const normalizeToDoctorGridIso = (inputIso) => {
+            const inMs = new Date(inputIso).getTime();
+            if (Number.isNaN(inMs)) return null;
+            const allowedStarts = [
+                { hour: 9, minute: 0 },
+                { hour: 10, minute: 30 },
+                { hour: 12, minute: 0 },
+                { hour: 14, minute: 0 },
+                { hour: 15, minute: 30 },
+            ];
+            const isWeekend = (iso) => {
+                const d = new Date(iso);
+                if (Number.isNaN(d.getTime())) return false;
+                const weekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short" }).format(d);
+                return weekday === "Sat" || weekday === "Sun";
+            };
+            const isValidStart = (iso) => {
+                const d = new Date(iso);
+                if (Number.isNaN(d.getTime())) return false;
+                const parts = new Intl.DateTimeFormat("en-GB", {
+                    timeZone: "Asia/Kolkata",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                }).formatToParts(d);
+                const h = Number(parts.find((p) => p.type === "hour")?.value || "0");
+                const m = Number(parts.find((p) => p.type === "minute")?.value || "0");
+                const startMin = h * 60 + m;
+                const endMin = startMin + SLOT_DURATION_MINUTES;
+                const overlapsLunch = startMin < 14 * 60 && endMin > (13 * 60 + 30);
+                const outsideWork = startMin < 9 * 60 || endMin > 18 * 60;
+                if (outsideWork || overlapsLunch) return false;
+                return allowedStarts.some((x) => x.hour === h && x.minute === m);
+            };
+            const inputNorm = new Date(inMs).toISOString();
+            if (!isWeekend(inputNorm) && isValidStart(inputNorm)) return inputNorm;
+
+            const ist = dateToISTParts(new Date(inMs));
+            for (const st of allowedStarts) {
+                const candidate = makeUtcIsoFromIstParts({
+                    year: ist.year,
+                    month: ist.month,
+                    day: ist.day,
+                    hour: st.hour,
+                    minute: st.minute,
+                });
+                if (new Date(candidate).getTime() < inMs) continue;
+                if (isWeekend(candidate)) continue;
+                if (isValidStart(candidate)) return candidate;
+            }
+            // Fallback: try tomorrow 09:00 (or next weekday).
+            for (let add = 1; add <= 10; add++) {
+                const d = new Date(inMs + add * 24 * 60 * 60 * 1000);
+                const ist2 = dateToISTParts(d);
+                const candidate = makeUtcIsoFromIstParts({
+                    year: ist2.year,
+                    month: ist2.month,
+                    day: ist2.day,
+                    hour: 9,
+                    minute: 0,
+                });
+                if (isWeekend(candidate)) continue;
+                if (isValidStart(candidate)) return candidate;
+            }
+            return null;
+        };
+
         let finalTherapy = s.therapy || "Panchakarma";
         let finalDatetime = s.datetime;
         if (action === "modified") {
             if (modifiedTherapy) finalTherapy = modifiedTherapy;
-            if (modifiedDatetime) finalDatetime = new Date(modifiedDatetime).toISOString();
+            if (modifiedDatetime) {
+                const parsed = new Date(modifiedDatetime).toISOString();
+                const normalized = normalizeToDoctorGridIso(parsed);
+                if (!normalized) {
+                    return res.status(400).json({ success: false, error: "Invalid modified datetime (must align to 09:00, 10:30, 12:00, 14:00, 15:30 IST)" });
+                }
+                finalDatetime = normalized;
+            }
         }
 
         const durationMin = Number(s.duration_minutes) || 90;
@@ -727,25 +807,38 @@ router.post("/appointments/:id/review", verifyFirebaseIdToken, requireDoctor, as
         }
 
         await sessionRef.update(sessionUpdate);
-        const currentDoctorId = s.practitioner_id || s.doctorId;
-        if (currentDoctorId) {
-            const b = firestoreDb.batch();
-            if (s.datetime && s.datetime !== finalDatetime) {
-                slotBlocks.addDeletesForDoctorSlots(b, firestoreDb, currentDoctorId, [s.datetime], durationMin);
+        // SINGLE SOURCE OF TRUTH: day queue rebuild after any time modification.
+        // This ensures deterministic ordering and shifting by priority for the whole day.
+        if (action === "modified" && (s.practitioner_id || s.doctorId) && s.datetime && finalDatetime) {
+            const currentDoctorId = s.practitioner_id || s.doctorId;
+            try {
+                const oldDay = istDayKeyFromIso(s.datetime);
+                const newDay = istDayKeyFromIso(finalDatetime);
+                if (oldDay) {
+                    await rebuildDoctorDayQueue(currentDoctorId, oldDay, [], { maxDays: 60 });
+                }
+                if (newDay) {
+                    await rebuildDoctorDayQueue(
+                        currentDoctorId,
+                        newDay,
+                        [
+                            {
+                                sessionId: id,
+                                priorityScore: Number(s.totalPriorityScore ?? s.priority) || 50,
+                                createdAt: s.created_at || s.createdAt || now,
+                            },
+                        ],
+                        { maxDays: 60 }
+                    );
+                }
+                // Refresh final datetime after rebuild for downstream calendar/email.
+                const refreshedAfterRebuild = await sessionRef.get();
+                if (refreshedAfterRebuild.exists && refreshedAfterRebuild.data()?.datetime) {
+                    finalDatetime = refreshedAfterRebuild.data().datetime;
+                }
+            } catch (qErr) {
+                console.error("appointments.review rebuildDoctorDayQueue failed:", qErr.message);
             }
-            slotBlocks.addOccupancyWrite(b, firestoreDb, {
-                doctorId: currentDoctorId,
-                iso: finalDatetime,
-                appointmentId: s.appointment_id || null,
-                sessionId: id,
-                patientId: s.patient_id || "",
-                priority: Number(s.totalPriorityScore ?? s.priority) || 50,
-                therapy: finalTherapy,
-                durationMinutes: durationMin,
-                status: "confirmed",
-                updatedAt: now,
-            });
-            await b.commit();
         }
 
         if (s.appointment_id) {
@@ -839,69 +932,46 @@ router.post("/check-conflicts", verifyFirebaseIdToken, requireDoctor, async (req
         }
 
         if (effectivePriority >= BUMP_EMERGENCY_MIN_SCORE) {
-            const scheduledSnap = await firestoreDb
-                .collection("sessions")
-                .where("practitioner_id", "==", doctorId)
-                .where("status", "in", ["confirmed", "scheduled", "pending_review"])
-                .get();
-            const scheduledSessions = [];
-            scheduledSnap.forEach((d) => scheduledSessions.push({ id: d.id, ...d.data() }));
-
-            const availableSlots = await buildDoctorCandidateSlotsAfter(doctorId, dt, 14);
-            const result = bumpAndReschedule(
-                {
-                    ...src,
-                    sessionId: sid,
-                    priorityScore: effectivePriority,
-                    patientEmail: src.patient_email,
-                    patientName: src.patient_name,
-                },
-                scheduledSessions.map((s) => ({
-                    ...s,
-                    sessionId: s.id,
-                    priorityScore: Number(s.totalPriorityScore ?? s.priority) || 50,
-                })),
-                availableSlots
+            const dayKey = istDayKeyFromIso(dt);
+            const result = await rebuildDoctorDayQueue(
+                doctorId,
+                dayKey,
+                [
+                    {
+                        sessionId: sid,
+                        priorityScore: effectivePriority,
+                        createdAt: src.created_at || src.createdAt || dt,
+                    },
+                ],
+                { maxDays: 60 }
             );
 
-            if (result.bumped) {
-                // Send dual notifications
-                const formatDT = (dt) => new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
-
-                // 1. Notify bumped patient
-                if (result.bumpedSession.patientEmail || result.bumpedSession.patient_email || result.bumpedSession.email) {
-                    try {
+            // Diff-based notifications: any session with oldDatetime != newDatetime is bumped.
+            const formatDT = (x) =>
+                new Date(x).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+            for (const c of result.changed || []) {
+                if (!c.oldDatetime || c.oldDatetime === c.newDatetime) continue;
+                try {
+                    const sSnap = await firestoreDb.collection("sessions").doc(c.sessionId).get();
+                    if (!sSnap.exists) continue;
+                    const sData = sSnap.data() || {};
+                    const to = sData.patient_email;
+                    if (to) {
                         await sendEmail({
-                            to: result.bumpedSession.patientEmail || result.bumpedSession.patient_email || result.bumpedSession.email,
+                            to,
                             subject: "⚠️ Urgent: Your Session Has Been Rescheduled",
                             html: `<p>Namaste,</p>
-                                <p>Your <b>${result.bumpedSession.therapy}</b> session has been rescheduled to accommodate an acute care requirement.</p>
-                                <p><b>New Time:</b> ${result.bumpedSession.newDatetime ? formatDT(result.bumpedSession.newDatetime) : 'Please check your dashboard'}</p>
-                                <p>We sincerely apologize for the inconvenience. 🙏</p>`
+                                  <p>Your <b>${sData.therapy || "session"}</b> session has been rescheduled to accommodate a higher-priority case.</p>
+                                  <p><b>Previous:</b> ${formatDT(c.oldDatetime)}</p>
+                                  <p><b>New Time:</b> ${formatDT(c.newDatetime)}</p>`,
                         });
-                    } catch (emailErr) {
-                        console.error("Failed to email bumped patient:", emailErr.message);
                     }
-                }
-
-                // 2. Notify high-priority patient
-                if (result.insertedSession.patientEmail || result.insertedSession.patient_email || result.insertedSession.email) {
-                    try {
-                        await sendEmail({
-                            to: result.insertedSession.patientEmail || result.insertedSession.patient_email || result.insertedSession.email,
-                            subject: "🌿 Emergency Priority Slot Confirmed",
-                            html: `<p>Namaste,</p>
-                                <p>An urgent priority slot has been secured for your <b>${result.insertedSession.therapy}</b> session.</p>
-                                <p><b>Confirmed Time:</b> ${formatDT(result.insertedSession.datetime)}</p>
-                                <p>Please arrive 15 minutes early. 🙏</p>`
-                        });
-                    } catch (emailErr) {
-                        console.error("Failed to email high-priority patient:", emailErr.message);
-                    }
+                } catch (e) {
+                    console.error("Bump notification failed:", e.message);
                 }
             }
 
-            return res.json({ success: true, ...result });
+            return res.json({ success: true, bumped: (result.changed || []).some((c) => c.oldDatetime && c.oldDatetime !== c.newDatetime), result });
         }
 
         res.json({ success: true, bumped: false, reason: "Priority not high enough for bump or no conflicts" });
@@ -918,12 +988,13 @@ router.post("/check-conflicts", verifyFirebaseIdToken, requireDoctor, async (req
 // Persist the bump result returned by /check-conflicts.
 router.post("/apply-bump", verifyFirebaseIdToken, requireDoctor, async (req, res) => {
     try {
-        const { bumpResult } = req.body;
-        if (!bumpResult?.bumped) {
-            return res.status(400).json({ success: false, error: "No bumped result to apply" });
-        }
-        const persisted = await applyBumpToFirestore(bumpResult, { doctorUid: req.firebaseUid });
-        res.json({ success: true, persisted });
+        // Deprecated: slot assignment is now handled by rebuildDoctorDayQueue().
+        // Kept only for backward compatibility with older clients.
+        res.json({
+            success: false,
+            deprecated: true,
+            error: "Deprecated: bumps are applied automatically via day-queue rebuild. Update client to stop calling /apply-bump.",
+        });
     } catch (error) {
         console.error("Apply bump error:", error);
         res.status(error.statusCode || 500).json({
@@ -1031,69 +1102,99 @@ Determine the urgency and respond in this exact JSON format:
         const baseSession = escalationSessSnap.data();
         const baseDoctorId = baseSession.practitioner_id;
         if (escalatedPriority.totalScore >= BUMP_EMERGENCY_MIN_SCORE && baseDoctorId) {
-            const emergencySession = {
-                sessionId,
-                patientId,
-                patientName,
-                patientEmail,
-                therapy,
-                datetime: new Date().toISOString(), // ASAP
-                priorityScore: escalatedPriority.totalScore,
-                email: patientEmail,
-            };
+            // Emergency override: schedule ASAP using the deterministic day-queue engine.
+            // We don't create duplicates; we create ONE new session doc and let the queue reorder the day.
+            const emergencyIso = new Date().toISOString();
+            const dayKey = istDayKeyFromIso(emergencyIso);
 
-            const scheduledSnap = await firestoreDb
-                .collection("sessions")
-                .where("practitioner_id", "==", baseDoctorId)
-                .where("status", "in", ["confirmed", "scheduled", "pending_review"])
-                .get();
-            const scheduledSessions = [];
-            scheduledSnap.forEach((d) => scheduledSessions.push({ id: d.id, ...d.data() }));
-
-            const candidateSlots = await buildDoctorCandidateSlotsAfter(baseDoctorId, emergencySession.datetime, 14);
-            bumpResult = bumpAndReschedule(
-                emergencySession,
-                scheduledSessions.map((s) => ({
-                    ...s,
-                    sessionId: s.id,
-                    priorityScore: Number(s.totalPriorityScore ?? s.priority) || 50,
-                })),
-                candidateSlots
+            const { createdSessionIds, changed } = await rebuildDoctorDayQueue(
+                baseDoctorId,
+                dayKey,
+                [
+                    {
+                        appointmentId: null,
+                        priorityScore: escalatedPriority.totalScore,
+                        createdAt: emergencyIso,
+                        baseDoc: {
+                            patient_id: patientId,
+                            patient_name: patientName || "Patient",
+                            patient_email: patientEmail || "",
+                            practitioner_id: baseDoctorId,
+                            doctor_name: baseSession.doctor_name || "",
+                            clinic_name: baseSession.clinic_name || "",
+                            appointment_id: null,
+                            intake_id: baseSession.intake_id || null,
+                            therapy: therapy || baseSession.therapy || "Panchakarma",
+                            duration_minutes: 90,
+                            status: "scheduled",
+                            doctor_approval: "approved",
+                            severity_score: newSeverity,
+                            dosha: dosha || baseSession.dosha || "Unknown",
+                            reason: "Emergency follow-up",
+                            clinical_summary: llmAnalysis.explanation || "Emergency follow-up scheduled due to adverse effects",
+                            precautions_pre: [],
+                            precautions_post: [],
+                            feedback_escalation: true,
+                            feedback_multiplier: 2.5,
+                            created_at: emergencyIso,
+                        },
+                    },
+                ],
+                { maxDays: 60 }
             );
 
-            if (bumpResult.bumped) {
-                // Send dual notifications
-                const formatDT = (dt) => new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+            // Create a response payload similar to old bumpResult for UI/clients.
+            bumpResult = {
+                bumped: (changed || []).some((c) => c.oldDatetime && c.oldDatetime !== c.newDatetime),
+                createdSessionIds,
+                changed,
+            };
 
-                if (bumpResult.bumpedSession.patientEmail || bumpResult.bumpedSession.patient_email || bumpResult.bumpedSession.email) {
-                    try {
+            // Notifications (diff-based)
+            const formatDT = (dt) =>
+                new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+
+            // Notify any displaced patients
+            for (const c of changed || []) {
+                if (!c.oldDatetime || c.oldDatetime === c.newDatetime) continue;
+                try {
+                    const sSnap = await firestoreDb.collection("sessions").doc(c.sessionId).get();
+                    if (!sSnap.exists) continue;
+                    const sData = sSnap.data() || {};
+                    const to = sData.patient_email;
+                    if (to) {
                         await sendEmail({
-                            to: bumpResult.bumpedSession.patientEmail || bumpResult.bumpedSession.patient_email || bumpResult.bumpedSession.email,
+                            to,
                             subject: "⚠️ Session Rescheduled — Emergency Protocol",
-                            html: `<p>Namaste,</p><p>Your <b>${bumpResult.bumpedSession.therapy}</b> session has been rescheduled due to a medical emergency.</p>
-                                <p><b>New Time:</b> ${bumpResult.bumpedSession.newDatetime ? formatDT(bumpResult.bumpedSession.newDatetime) : 'Check your dashboard'}</p>
-                                <p>We apologize for the inconvenience. 🙏</p>`
+                            html: `<p>Namaste,</p>
+                                  <p>Your <b>${sData.therapy || "session"}</b> session has been rescheduled due to a medical emergency.</p>
+                                  <p><b>Previous:</b> ${formatDT(c.oldDatetime)}</p>
+                                  <p><b>New Time:</b> ${formatDT(c.newDatetime)}</p>`,
                         });
-                    } catch (e) { console.error("Bump email failed:", e.message); }
+                    }
+                } catch (e) {
+                    console.error("Emergency bump email failed:", e.message);
                 }
+            }
 
-                if (patientEmail) {
-                    try {
+            // Notify the escalated patient (best effort: read emergency session datetime)
+            if (patientEmail && createdSessionIds && createdSessionIds.length > 0) {
+                try {
+                    const emSnap = await firestoreDb.collection("sessions").doc(createdSessionIds[0]).get();
+                    const em = emSnap.exists ? emSnap.data() : null;
+                    if (em?.datetime) {
                         await sendEmail({
                             to: patientEmail,
                             subject: "🚨 Emergency Follow-Up Scheduled",
-                            html: `<p>Namaste ${patientName},</p>
-                                <p>Based on your adverse reaction report, an <b>emergency follow-up</b> has been scheduled.</p>
-                                <p><b>Time:</b> ${formatDT(bumpResult.insertedSession.datetime)}</p>
-                                <p>${llmAnalysis.care_instructions?.join(". ") || ""}</p>
-                                <p>Please arrive early. 🙏</p>`
+                            html: `<p>Namaste ${patientName || "Patient"},</p>
+                                  <p>An <b>emergency follow-up</b> has been scheduled based on your report.</p>
+                                  <p><b>Time:</b> ${formatDT(em.datetime)}</p>
+                                  <p>${llmAnalysis.care_instructions?.join(". ") || ""}</p>
+                                  <p>Please arrive early. 🙏</p>`,
                         });
-                    } catch (e) { console.error("Emergency email failed:", e.message); }
-                }
-                try {
-                    await applyBumpToFirestore(bumpResult, { patientUid: req.firebaseUid });
-                } catch (persistBumpErr) {
-                    console.error("Emergency bump persist failed:", persistBumpErr.message);
+                    }
+                } catch (e) {
+                    console.error("Emergency follow-up email failed:", e.message);
                 }
             }
         }
@@ -1257,42 +1358,74 @@ router.post("/priority-queue", verifyFirebaseIdToken, requireDoctor, async (req,
 
 router.post("/bump", verifyFirebaseIdToken, requireDoctor, async (req, res) => {
     try {
-        const { highPrioritySession, scheduledSessions, availableSlots } = req.body;
+        const { highPrioritySession } = req.body;
 
-        if (!highPrioritySession || !scheduledSessions) {
-            return res.status(400).json({ success: false, error: "highPrioritySession and scheduledSessions required" });
+        if (!highPrioritySession) {
+            return res.status(400).json({ success: false, error: "highPrioritySession required" });
         }
 
-        const result = bumpAndReschedule(highPrioritySession, scheduledSessions, availableSlots || []);
+        // SINGLE SOURCE OF TRUTH: run deterministic day-queue rebuild.
+        const sid = highPrioritySession?.sessionId || highPrioritySession?.id;
+        if (!sid) {
+            return res.status(400).json({ success: false, error: "highPrioritySession.sessionId required" });
+        }
+        const srcSnap = await firestoreDb.collection("sessions").doc(sid).get();
+        if (!srcSnap.exists) {
+            return res.status(404).json({ success: false, error: "Session not found" });
+        }
+        const src = srcSnap.data();
+        if (src.practitioner_id !== req.firebaseUid) {
+            return res.status(403).json({ success: false, error: "Not authorized" });
+        }
+        if (!src.datetime) {
+            return res.status(400).json({ success: false, error: "Session missing datetime" });
+        }
+        const priorityScore = Number(src.totalPriorityScore ?? src.priority) || 50;
+        const dayKey = istDayKeyFromIso(src.datetime);
 
-        if (result.bumped) {
-            const formatDT = (dt) => new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+        const result = await rebuildDoctorDayQueue(
+            req.firebaseUid,
+            dayKey,
+            [
+                {
+                    sessionId: sid,
+                    priorityScore,
+                    createdAt: src.created_at || src.createdAt || src.datetime,
+                },
+            ],
+            { maxDays: 60 }
+        );
 
-            if (result.bumpedSession.patientEmail || result.bumpedSession.patient_email || result.bumpedSession.email) {
-                try {
+        // Diff-based notifications for displaced patients
+        const formatDT = (dt) =>
+            new Date(dt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+        for (const c of result.changed || []) {
+            if (!c.oldDatetime || c.oldDatetime === c.newDatetime) continue;
+            try {
+                const sSnap = await firestoreDb.collection("sessions").doc(c.sessionId).get();
+                if (!sSnap.exists) continue;
+                const sData = sSnap.data() || {};
+                const to = sData.patient_email;
+                if (to) {
                     await sendEmail({
-                        to: result.bumpedSession.patientEmail || result.bumpedSession.patient_email || result.bumpedSession.email,
+                        to,
                         subject: "⚠️ Urgent Update: Session Rescheduled",
-                        html: `<p>Namaste,</p><p>Your session for <b>${result.bumpedSession.therapy}</b> has been rescheduled.</p>
-                               <p><b>New Time:</b> ${result.bumpedSession.newDatetime ? formatDT(result.bumpedSession.newDatetime) : 'Check your dashboard'}</p>
-                               <p>We apologize for the inconvenience. 🙏</p>`
+                        html: `<p>Namaste,</p>
+                              <p>Your <b>${sData.therapy || "session"}</b> was rescheduled due to a higher-priority case.</p>
+                              <p><b>Previous:</b> ${formatDT(c.oldDatetime)}</p>
+                              <p><b>New:</b> ${formatDT(c.newDatetime)}</p>`,
                     });
-                } catch (e) { console.error("Bump email failed:", e.message); }
-            }
-
-            if (result.insertedSession.patientEmail || result.insertedSession.patient_email || result.insertedSession.email) {
-                try {
-                    await sendEmail({
-                        to: result.insertedSession.patientEmail || result.insertedSession.patient_email || result.insertedSession.email,
-                        subject: "🌿 High-Priority Session Confirmed",
-                        html: `<p>Namaste,</p><p>A priority slot has been secured for your <b>${result.insertedSession.therapy}</b> session.</p>
-                               <p><b>Time:</b> ${formatDT(result.insertedSession.datetime)}</p><p>Please arrive 15 minutes early. 🙏</p>`
-                    });
-                } catch (e) { console.error("Priority email failed:", e.message); }
+                }
+            } catch (e) {
+                console.error("Bump notification failed:", e.message);
             }
         }
 
-        res.json({ success: true, ...result });
+        res.json({
+            success: true,
+            bumped: (result.changed || []).some((c) => c.oldDatetime && c.oldDatetime !== c.newDatetime),
+            result,
+        });
     } catch (error) {
         console.error("Bump error:", error);
         res.status(500).json({ success: false, error: "Failed to bump/reschedule" });

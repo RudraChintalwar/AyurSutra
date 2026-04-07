@@ -704,6 +704,11 @@ const DoctorDashboard = () => {
                         <Badge className={`${getStatusBadge(session.status).className} text-[10px] mt-1`}>
                           {getStatusBadge(session.status).label}
                         </Badge>
+                        {session.auto_rescheduled && (
+                          <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-[10px] mt-1">
+                            Auto-rescheduled (priority)
+                          </Badge>
+                        )}
                         {/* Action buttons for confirmed sessions */}
                         {(session.status === 'confirmed' || session.status === 'scheduled') && (
                           <div className="flex items-center gap-1 mt-2">

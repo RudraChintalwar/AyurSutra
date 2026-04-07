@@ -5,6 +5,7 @@ import { admin } from "../middleware/auth.js";
 import * as slotBlocks from "../services/slotBlockService.js";
 import { removeSessionCalendarEventsFromGoogle } from "../utils/googleCalendarUser.js";
 import { sendEmail } from "../routes/notifications.js";
+import { rebuildDoctorDayQueue, istDayKeyFromIso } from "../services/doctorDayQueue.js";
 
 const db = admin.firestore();
 
@@ -270,6 +271,7 @@ export async function rescheduleReview(req, res) {
         }
         const reviewNote = req.body?.reviewNote || "";
         const proposed = req.body?.proposedDatetime || s.proposed_datetime || null;
+        const SLOT_DURATION_MINUTES = 90;
         const approvedDatetime = action === "approved" && proposed ? new Date(proposed).toISOString() : null;
         const now = new Date().toISOString();
 
@@ -285,10 +287,108 @@ export async function rescheduleReview(req, res) {
             if (!approvedDatetime) {
                 return res.status(400).json({ success: false, error: "proposedDatetime is required for approval" });
             }
-            patch.status = "confirmed";
-            patch.datetime = approvedDatetime;
+
+            // Enforce strict doctor slot grid (IST): 09:00, 10:30, 14:00, 15:30 with 90-min sessions
+            // and lunch break from 13:00-14:00. Patients must never be rescheduled into 30-min drift slots.
+            const IST_OFFSET_MIN = 330;
+            const dateToISTParts = (d) => {
+                const parts = new Intl.DateTimeFormat("en-GB", {
+                    timeZone: "Asia/Kolkata",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                }).formatToParts(d);
+                const get = (t) => parts.find((p) => p.type === t)?.value;
+                return {
+                    year: Number(get("year")),
+                    month: Number(get("month")),
+                    day: Number(get("day")),
+                    hour: Number(get("hour")),
+                    minute: Number(get("minute")),
+                };
+            };
+            const makeUtcIsoFromIstParts = ({ year, month, day, hour, minute }) => {
+                const utcMs = Date.UTC(year, month - 1, day, hour, minute) - IST_OFFSET_MIN * 60000;
+                return new Date(utcMs).toISOString();
+            };
+            const isWeekendIST = (iso) => {
+                const d = new Date(iso);
+                if (Number.isNaN(d.getTime())) return false;
+                const weekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short" }).format(d);
+                return weekday === "Sat" || weekday === "Sun";
+            };
+            const allowedStarts = [
+                { hour: 9, minute: 0 },
+                { hour: 10, minute: 30 },
+                { hour: 12, minute: 0 },
+                { hour: 14, minute: 0 },
+                { hour: 15, minute: 30 },
+            ];
+            const normalizeToGrid = (inputIso) => {
+                const inMs = new Date(inputIso).getTime();
+                if (Number.isNaN(inMs)) return null;
+                const inputIst = dateToISTParts(new Date(inMs));
+
+                // Try same IST day first, snapping forward to the next allowed start.
+                for (const st of allowedStarts) {
+                    const candidate = makeUtcIsoFromIstParts({
+                        year: inputIst.year,
+                        month: inputIst.month,
+                        day: inputIst.day,
+                        hour: st.hour,
+                        minute: st.minute,
+                    });
+                    const cMs = new Date(candidate).getTime();
+                    if (cMs < inMs) continue;
+                    if (isWeekendIST(candidate)) continue;
+
+                    const startMin = st.hour * 60 + st.minute;
+                    const endMin = startMin + SLOT_DURATION_MINUTES;
+                    const overlapsLunch = startMin < 14 * 60 && endMin > (13 * 60 + 30);
+                    const outsideWork = startMin < 9 * 60 || endMin > 18 * 60;
+                    if (outsideWork || overlapsLunch) continue;
+                    return candidate;
+                }
+
+                // Otherwise, roll forward day-by-day up to 14 days.
+                for (let add = 1; add <= 14; add++) {
+                    const nextDay = new Date(inMs + add * 24 * 60 * 60 * 1000);
+                    const ist = dateToISTParts(nextDay);
+                    for (const st of allowedStarts) {
+                        const candidate = makeUtcIsoFromIstParts({
+                            year: ist.year,
+                            month: ist.month,
+                            day: ist.day,
+                            hour: st.hour,
+                            minute: st.minute,
+                        });
+                        if (isWeekendIST(candidate)) continue;
+                        return candidate;
+                    }
+                }
+                return null;
+            };
+
+            const normalizedApproved = normalizeToGrid(approvedDatetime);
+            if (!normalizedApproved) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid approved datetime (must align to 09:00, 10:30, 12:00, 14:00, 15:30 IST grid)",
+                });
+            }
+
+            // Use normalized grid iso
+            patch.datetime = normalizedApproved;
             patch.reschedule_approved = true;
             patch.reschedule_rejected = false;
+            patch.status = "confirmed";
+            // Clear proposed datetime metadata handled below.
+            patch.proposed_datetime = null;
+
+            // Keep oldDatetime tracking; actual patch below uses patch.datetime.
         } else {
             patch.status = s.previous_status_before_reschedule || "scheduled";
             patch.reschedule_approved = false;
@@ -296,37 +396,30 @@ export async function rescheduleReview(req, res) {
         }
         await ref.update(patch);
 
-        // Keep slot occupancy in sync with approved slot moves.
-        if (action === "approved" && s.practitioner_id) {
+        // SINGLE SOURCE OF TRUTH: day queue rebuild (no slotBlocks / no direct slot writes).
+        if (action === "approved" && s.practitioner_id && patch.datetime) {
             try {
-                const durationMinutes =
-                    Number(s.duration_minutes ?? s.durationMinutes) ||
-                    (String(s.therapy || "").includes("Vamana") ? 120 : 90);
-                const b = db.batch();
-                if (oldDatetime && oldDatetime !== approvedDatetime) {
-                    slotBlocks.addDeletesForDoctorSlots(
-                        b,
-                        db,
+                const oldDay = oldDatetime ? istDayKeyFromIso(oldDatetime) : "";
+                const newDay = istDayKeyFromIso(patch.datetime);
+                if (oldDay) {
+                    await rebuildDoctorDayQueue(s.practitioner_id, oldDay, [], { maxDays: 60 });
+                }
+                if (newDay) {
+                    await rebuildDoctorDayQueue(
                         s.practitioner_id,
-                        [oldDatetime],
-                        durationMinutes
+                        newDay,
+                        [
+                            {
+                                sessionId: id,
+                                priorityScore: Number(s.totalPriorityScore ?? s.priority) || 50,
+                                createdAt: s.created_at || s.createdAt || now,
+                            },
+                        ],
+                        { maxDays: 60 }
                     );
                 }
-                slotBlocks.addOccupancyWrite(b, db, {
-                    doctorId: s.practitioner_id,
-                    iso: approvedDatetime,
-                    appointmentId: s.appointment_id || null,
-                    sessionId: id,
-                    patientId: s.patient_id || "",
-                    priority: Number(s.totalPriorityScore ?? s.priority) || 50,
-                    therapy: s.therapy || null,
-                    durationMinutes,
-                    status: "confirmed",
-                    updatedAt: now,
-                });
-                await b.commit();
-            } catch (slotErr) {
-                console.error("rescheduleReview slot occupancy sync failed:", slotErr.message);
+            } catch (qErr) {
+                console.error("rescheduleReview rebuildDoctorDayQueue failed:", qErr.message);
             }
         }
 
@@ -347,7 +440,7 @@ export async function rescheduleReview(req, res) {
                         to: patientEmail,
                         subject: `Reschedule Approved — ${s.therapy || "Session"}`,
                         html: `<p>Your reschedule request was approved.</p>
-                               <p><b>New slot:</b> ${new Date(approvedDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>`,
+                               <p><b>New slot:</b> ${new Date(patch.datetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>`,
                     });
                 } else {
                     await sendEmail({
@@ -366,7 +459,7 @@ export async function rescheduleReview(req, res) {
             title: action === "approved" ? "Reschedule approved" : "Reschedule rejected",
             body:
                 action === "approved"
-                    ? `Your ${s.therapy || "session"} was moved to ${new Date(approvedDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`
+                    ? `Your ${s.therapy || "session"} was moved to ${new Date(patch.datetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`
                     : `Your reschedule request for ${s.therapy || "session"} was not approved.`,
             sender: "doctor",
         });

@@ -65,13 +65,16 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
   patient
 }) => {
   const { toast } = useToast();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, role } = useAuth();
   const { t, language } = useLanguage();
   // ─── FIX #3: State for doctor notes on completion ────────────────────────
   const [doctorNotes, setDoctorNotes] = useState('');
   const [isActioning, setIsActioning] = useState(false);
 
   if (!session || !patient) return null;
+
+  // Patients must never see the priority score (privacy).
+  const showPriority = role !== "patient";
 
   const formatDateTime = (dateTime: string) => {
     return new Date(dateTime).toLocaleString(language === "hi" ? 'hi-IN' : 'en-IN', {
@@ -230,9 +233,11 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                 <Badge className={`dosha-${(patient.dosha || 'vata').toLowerCase()}`}>
                   {patient.dosha || 'Unknown'} Constitution
                 </Badge>
-                <Badge className={getPriorityColor(patient.llm_recommendation?.priority_score || 0)}>
-                  Priority: {patient.llm_recommendation?.priority_score || 'N/A'}
-                </Badge>
+                {showPriority && (
+                  <Badge className={getPriorityColor(patient.llm_recommendation?.priority_score || 0)}>
+                    Priority: {patient.llm_recommendation?.priority_score || 'N/A'}
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -288,20 +293,24 @@ const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <div className="text-xs text-muted-foreground">{t("sessionDetails.priorityScore")}</div>
-                  <div className="flex items-center mt-1">
-                    <div className="flex-1 bg-muted rounded-full h-2">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${patient.llm_recommendation?.priority_score || 0}%` }}
-                      />
+              <div className="mt-3">
+                {showPriority ? (
+                  <>
+                    <div className="text-xs text-muted-foreground">{t("sessionDetails.priorityScore")}</div>
+                    <div className="flex items-center mt-1">
+                      <div className="flex-1 bg-muted rounded-full h-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all"
+                          style={{ width: `${patient.llm_recommendation?.priority_score || 0}%` }}
+                        />
+                      </div>
+                      <span className="ml-2 text-xs font-medium">
+                        {patient.llm_recommendation?.priority_score || 'N/A'}
+                      </span>
                     </div>
-                    <span className="ml-2 text-xs font-medium">
-                      {patient.llm_recommendation?.priority_score || 'N/A'}
-                    </span>
-                  </div>
-                </div>
+                  </>
+                ) : null}
+              </div>
               </div>
 
               {session.notes && (

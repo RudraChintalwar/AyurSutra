@@ -153,10 +153,7 @@ const PatientDashboard = () => {
     ['scheduled', 'confirmed', 'pending_review', 'reschedule_requested', 'bumped'].includes(String(s.status))
   );
   const latestPrioritySession = activePrioritySessions[0] || patientSessions[0];
-  const currentPriorityScore =
-    Number(latestPrioritySession?.totalPriorityScore ?? latestPrioritySession?.priority) ||
-    Number(currentPatient?.llm_recommendation?.priority_score) ||
-    null;
+  // Priority score is intentionally hidden from patients.
   const recommendedSessions = currentPatient?.llm_recommendation?.sessions_recommended || patientSessions.length || 1;
   const recoveryRate = Math.min(
     Math.round((completedSessions.length / recommendedSessions) * 100),
@@ -249,9 +246,9 @@ const PatientDashboard = () => {
             </div>
           <div className="text-center p-3 bg-green-50 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
-              {currentPriorityScore ?? 'N/A'}
+              {upcomingSessions.length}
             </div>
-            <div className="text-sm text-muted-foreground">{t("patient.currentPriority")}</div>
+            <div className="text-sm text-muted-foreground">{t("patient.upcomingSessions")}</div>
           </div>
         </div>
       </div>
@@ -508,9 +505,7 @@ const PatientDashboard = () => {
                       <span>Every {currentPatient.llm_recommendation.spacing_days} days</span>
                     </div>
                   </div>
-                  <Badge className="priority-badge-high">
-                    Priority: {currentPriorityScore ?? 'N/A'}
-                  </Badge>
+                  {/* Priority score is intentionally hidden from patients. */}
                 </div>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   {currentPatient.llm_recommendation.explanation}

@@ -122,7 +122,9 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
 
   // ─── FIX #6: Use dynamically generated slots ──────────────────────────────
   const [mockSlots, setMockSlots] = useState<string[]>(generateDefaultSlots());
-  const doctorTimeOptions = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
+  // Strict 90-minute slot grid (no 30-minute starts) + lunch break handled server-side.
+  // Valid IST starts: 09:00, 10:30, 12:00, 14:00, 15:30
+  const doctorTimeOptions = ['09:00', '10:30', '12:00', '14:00', '15:30'];
 
   useEffect(() => {
     if (!user) return;
@@ -557,7 +559,11 @@ const SchedulingWizard: React.FC<SchedulingWizardProps> = ({ isOpen, onClose, on
               <div className="p-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-semibold text-lg text-primary">{formData.recommendation.therapy}</h4>
-                  <div className="flex items-center space-x-2"><Badge>Priority: {formData.recommendation.totalPriorityScore}</Badge></div>
+                  {role === 'doctor' && (
+                    <div className="flex items-center space-x-2">
+                      <Badge>Priority: {formData.recommendation.totalPriorityScore}</Badge>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                   <div><div className="text-2xl font-bold text-primary">{formData.recommendation.sessions_recommended}</div><div className="text-sm text-muted-foreground">Sessions</div></div>

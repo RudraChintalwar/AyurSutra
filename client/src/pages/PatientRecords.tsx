@@ -179,7 +179,7 @@ const PatientRecords = () => {
               </div>
               <div className="text-center p-3 bg-ayur-soft-gold/10 rounded-lg">
                 <div className="text-lg font-bold text-ayur-soft-gold">
-                  {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
+                  {currentPatient?.healthScore || 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">{language === "hi" ? "स्वास्थ्य स्कोर" : "Health Score"}</div>
               </div>

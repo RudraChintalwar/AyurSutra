@@ -107,10 +107,6 @@ const PatientSessions = () => {
   const cancelledSessions = sessions.filter(s => s.status === 'cancelled' || s.status === 'rejected');
   const allSessions = sessions;
   const latestPrioritySession = upcomingSessions[0] || sessions[0];
-  const currentPriorityScore =
-    Number(latestPrioritySession?.totalPriorityScore ?? latestPrioritySession?.priority) ||
-    Number(currentPatient?.llm_recommendation?.priority_score) ||
-    null;
 
   const handleSessionClick = (session: any) => {
     setSelectedSession(session);
@@ -263,6 +259,11 @@ const PatientSessions = () => {
                           <Badge variant="outline" className="text-xs">
                             Session {session.session_number}
                           </Badge>
+                          {session.auto_rescheduled && (
+                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 ml-2 text-xs">
+                              Auto-rescheduled (priority)
+                            </Badge>
+                          )}
                           {session.status === 'bumped' && (
                             <Badge className="bg-red-100 text-red-700 border-red-200 ml-2 text-xs font-semibold animate-pulse">
                               <AlertCircle className="w-3 h-3 mr-1" />
@@ -332,6 +333,11 @@ const PatientSessions = () => {
                           <Badge variant="outline" className="text-xs">
                             Session {session.session_number}
                           </Badge>
+                          {session.auto_rescheduled && (
+                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs">
+                              Auto-rescheduled (priority)
+                            </Badge>
+                          )}
                           {session.feedback && (
                             <Badge className="bg-accent/10 text-accent text-xs">
                               <Star className="w-3 h-3 mr-1" />
@@ -441,9 +447,7 @@ const PatientSessions = () => {
                   <span>Every {currentPatient?.llm_recommendation?.spacing_days || 0} days</span>
                 </div>
               </div>
-              <Badge className="priority-badge-high">
-                Priority: {currentPriorityScore ?? 'N/A'}
-              </Badge>
+              {/* Priority score is intentionally hidden from patients. */}
             </div>
             
             <p className="text-muted-foreground text-sm leading-relaxed mb-4">

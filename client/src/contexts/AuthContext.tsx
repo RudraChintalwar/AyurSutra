@@ -164,10 +164,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     fbUser: FirebaseUser
   ): Promise<UserProfile | null> => {
     try {
-      const result = await Promise.race([
-        getDoc(doc(db, "users", fbUser.uid)),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]);
+      // Note: Removed tight 3000ms timeout. Firebase cold starts or slow networks can easily 
+      // exceed 3s, falsely triggering "user not found" for returning valid Google Login users.
+      const result = await getDoc(doc(db, "users", fbUser.uid));
 
       if (result && result.exists()) {
         const data = result.data();

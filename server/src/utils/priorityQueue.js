@@ -239,6 +239,52 @@ export function bumpAndReschedule(highPrioritySession, scheduledSessions, availa
     };
     const targetDay = calendarDayKeyIST(highPrioritySession.datetime);
 
+    // Strict 90-minute slot grid: 09:00, 10:30, 12:00, 14:00, 15:30 (IST).
+    // If any existing bad data (e.g. 09:30) exists, normalize before reusing it.
+    const normalizeToGridSameDayOrNull = (iso) => {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return null;
+        const parts = new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }).formatToParts(d);
+        const get = (t) => parts.find((p) => p.type === t)?.value;
+        const y = Number(get("year"));
+        const m = Number(get("month"));
+        const day = Number(get("day"));
+        const hour = Number(get("hour"));
+        const minute = Number(get("minute"));
+        const allowed = [
+            { hour: 9, minute: 0 },
+            { hour: 10, minute: 30 },
+            { hour: 12, minute: 0 },
+            { hour: 14, minute: 0 },
+            { hour: 15, minute: 30 },
+        ];
+        const mk = (h, min) => {
+            // Convert IST clock to UTC ISO.
+            const IST_OFFSET_MIN = 330;
+            const utcMs = Date.UTC(y, m - 1, day, h, min) - IST_OFFSET_MIN * 60000;
+            return new Date(utcMs).toISOString();
+        };
+        // Exact match keeps as-is.
+        if (allowed.some((x) => x.hour === hour && x.minute === minute)) return new Date(d.getTime()).toISOString();
+        // Otherwise, snap forward to the next allowed start on the same day.
+        const inMin = hour * 60 + minute;
+        for (const st of allowed) {
+            const stMin = st.hour * 60 + st.minute;
+            if (stMin >= inMin) return mk(st.hour, st.minute);
+        }
+        // No slot remaining on same day.
+        return null;
+    };
+
     // ─── ISSUE D FIX: include all active statuses, not just 'scheduled' ─────
     // Before: status === "scheduled" — never matched real approved sessions
     // After:  any non-terminal status can be bumped
@@ -286,6 +332,14 @@ export function bumpAndReschedule(highPrioritySession, scheduledSessions, availa
         new Date(slot) > new Date(highPrioritySession.datetime)
     );
 
+    // If we cannot find a next slot, don't bump (would strand the bumped patient).
+    if (!nextSlot) {
+        return { bumped: false, reason: "No available slot to auto-reschedule bumped session" };
+    }
+
+    // High-priority takes the freed slot, but it must be a valid grid start.
+    const freedSlotNormalized = normalizeToGridSameDayOrNull(lowestPriority.datetime) || lowestPriority.datetime;
+
     return {
         bumped: true,
         bumpedSession: {
@@ -296,7 +350,7 @@ export function bumpAndReschedule(highPrioritySession, scheduledSessions, availa
         insertedSession: {
             ...highPrioritySession,
             priorityScore: effectivePriority,
-            datetime: lowestPriority.datetime, // Takes the freed slot
+            datetime: freedSlotNormalized, // Takes the freed slot (normalized if needed)
         },
     };
 }

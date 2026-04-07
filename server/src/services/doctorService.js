@@ -5,6 +5,7 @@
 import { admin } from "../middleware/auth.js";
 import { calculatePriorityScore } from "../utils/priorityQueue.js";
 import * as slotBlocks from "./slotBlockService.js";
+import { rebuildDoctorDayQueue, istDayKeyFromIso } from "./doctorDayQueue.js";
 
 const db = admin.firestore();
 
@@ -41,6 +42,12 @@ export function calculateDistanceKM(lat1, lon1, lat2, lon2) {
 }
 
 const THIRTY_MIN_MS = 30 * 60 * 1000;
+const SLOT_DURATION_MINUTES = 90;
+const WORK_START_HOUR = 9;
+const WORK_END_HOUR = 18;
+const LUNCH_START_HOUR = 13;
+const LUNCH_START_MINUTE = 30; // 1:30 PM
+const LUNCH_END_HOUR = 14;
 export const BLOCKING_SESSION_STATUSES = ["pending_review", "confirmed", "scheduled", "reschedule_requested"];
 export const ACTIVE_APPOINTMENT_STATUSES = ["pending", "approved"];
 
@@ -54,6 +61,205 @@ function minuteKey(iso) {
     const t = new Date(iso).getTime();
     if (Number.isNaN(t)) return null;
     return Math.floor(t / 60000);
+}
+
+function addOccupiedDurationMinuteKeys(occupiedKeys, startIso, durationMinutes = SLOT_DURATION_MINUTES) {
+    const startMs = new Date(startIso).getTime();
+    if (Number.isNaN(startMs)) return;
+    const steps = Math.ceil(durationMinutes / 30);
+    for (let i = 0; i < steps; i++) {
+        const iso = new Date(startMs + i * THIRTY_MIN_MS).toISOString();
+        const k = minuteKey(iso);
+        if (k !== null) occupiedKeys.add(k);
+    }
+}
+
+function isValidDoctorSlotStart(iso, durationMinutes = SLOT_DURATION_MINUTES) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(d);
+    const startHour = Number(parts.find((p) => p.type === "hour")?.value || "0");
+    const startMin = Number(parts.find((p) => p.type === "minute")?.value || "0");
+    const start = startHour * 60 + startMin;
+    const end = start + durationMinutes;
+    const workStart = WORK_START_HOUR * 60;
+    const workEnd = WORK_END_HOUR * 60;
+    const lunchStart = LUNCH_START_HOUR * 60 + LUNCH_START_MINUTE;
+    const lunchEnd = LUNCH_END_HOUR * 60;
+
+    // Strict grid enforcement (prevents 09:30 / 10:00 drift).
+    // With 90-min sessions and lunch 13:30–14:00, valid starts are:
+    // 09:00, 10:30, 12:00, 14:00, 15:30 (IST).
+    const allowedStartMinutes = [9 * 60, 10 * 60 + 30, 12 * 60, 14 * 60, 15 * 60 + 30];
+    if (!allowedStartMinutes.includes(start)) return false;
+
+    if (start < workStart || end > workEnd) return false;
+    const overlapsLunch = start < lunchEnd && end > lunchStart;
+    if (overlapsLunch) return false;
+    return true;
+}
+
+const IST_OFFSET_MIN = 330;
+function dateToISTParts(d) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(d);
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    return {
+        year: Number(get("year")),
+        month: Number(get("month")),
+        day: Number(get("day")),
+        hour: Number(get("hour")),
+        minute: Number(get("minute")),
+    };
+}
+
+function makeUtcIsoFromIstParts({ year, month, day, hour, minute }) {
+    const utcMs = Date.UTC(year, month - 1, day, hour, minute) - IST_OFFSET_MIN * 60000;
+    return new Date(utcMs).toISOString();
+}
+
+function calendarDayKeyIST(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(d);
+}
+
+function isWeekendIST(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    const weekday = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short",
+    }).format(d);
+    return weekday === "Sat" || weekday === "Sun";
+}
+
+/**
+ * Normalize any arbitrary datetime to the next valid doctor slot start (IST)
+ * based on the strict 90-minute grid: 09:00, 10:30, 12:00, 14:00, 15:30.
+ * Skips weekends and enforces lunch/work rules via isValidDoctorSlotStart().
+ */
+function normalizeToDoctorGridIso(inputIso, durationMinutes = SLOT_DURATION_MINUTES) {
+    const inMs = new Date(inputIso).getTime();
+    if (Number.isNaN(inMs)) return null;
+    const inputNormalized = new Date(inMs).toISOString();
+    if (!isWeekendIST(inputNormalized) && isValidDoctorSlotStart(inputNormalized, durationMinutes)) {
+        return inputNormalized;
+    }
+
+    const allowedStarts = [
+        { hour: 9, minute: 0 },
+        { hour: 10, minute: 30 },
+        { hour: 12, minute: 0 },
+        { hour: 14, minute: 0 },
+        { hour: 15, minute: 30 },
+    ];
+
+    // Try same IST day first (>= input time).
+    const ist = dateToISTParts(new Date(inMs));
+    for (const st of allowedStarts) {
+        const candidate = makeUtcIsoFromIstParts({
+            year: ist.year,
+            month: ist.month,
+            day: ist.day,
+            hour: st.hour,
+            minute: st.minute,
+        });
+        const cMs = new Date(candidate).getTime();
+        if (cMs < inMs) continue;
+        if (isWeekendIST(candidate)) continue;
+        if (!isValidDoctorSlotStart(candidate, durationMinutes)) continue;
+        return candidate;
+    }
+
+    // Otherwise, roll forward using the canonical next-slot finder.
+    const empty = new Set();
+    return nextAvailableDoctorSlotAfter(inputNormalized, empty, durationMinutes);
+}
+
+function dayGridSlotsForIso(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return [];
+    const ist = dateToISTParts(d);
+    const allowedStarts = [
+        { hour: 9, minute: 0 },
+        { hour: 10, minute: 30 },
+        { hour: 12, minute: 0 },
+        { hour: 14, minute: 0 },
+        { hour: 15, minute: 30 },
+    ];
+    return allowedStarts.map((st) =>
+        makeUtcIsoFromIstParts({
+            year: ist.year,
+            month: ist.month,
+            day: ist.day,
+            hour: st.hour,
+            minute: st.minute,
+        })
+    );
+}
+
+function nextAvailableDoctorSlotAfter(afterIso, occupiedKeys, durationMinutes = SLOT_DURATION_MINUTES) {
+    const afterMs = new Date(afterIso).getTime();
+    if (Number.isNaN(afterMs)) return null;
+    const searchStart = afterMs + THIRTY_MIN_MS;
+    // Strict 90-minute slot grid (no 30-minute starts):
+    // Work: 9:00–18:00, Lunch: 13:30–14:00
+    // Valid starts: 09:00, 10:30, 12:00, 14:00, 15:30
+    const allowedStarts = [
+        { hour: 9, minute: 0 },
+        { hour: 10, minute: 30 },
+        { hour: 12, minute: 0 },
+        { hour: 14, minute: 0 },
+        { hour: 15, minute: 30 },
+    ];
+
+    // Search up to 60 days to guarantee fallback.
+    for (let dayOffset = 0; dayOffset < 60; dayOffset++) {
+        const day = new Date(searchStart + dayOffset * 24 * 60 * 60 * 1000);
+        const ist = dateToISTParts(day);
+
+        // Weekend skip (clinic closed).
+        const weekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short" }).format(day);
+        if (weekday === "Sat" || weekday === "Sun") continue;
+
+        for (const st of allowedStarts) {
+            const iso = makeUtcIsoFromIstParts({
+                year: ist.year,
+                month: ist.month,
+                day: ist.day,
+                hour: st.hour,
+                minute: st.minute,
+            });
+            const cMs = new Date(iso).getTime();
+            if (cMs <= afterMs) continue;
+            if (!isValidDoctorSlotStart(iso, durationMinutes)) continue;
+
+            const testKeys = new Set();
+            addOccupiedDurationMinuteKeys(testKeys, iso, durationMinutes);
+            const blocked = [...testKeys].some((k) => occupiedKeys.has(k));
+            if (!blocked) return iso;
+        }
+    }
+
+    return null;
 }
 
 export function requestedSlotConflictsWithTime(requestedSlotISOs, existingISO) {
@@ -242,7 +448,10 @@ export async function bookPatientRequest(body) {
     }
 
     const now = new Date().toISOString();
-    const requestedSlotTimes = Array.isArray(scheduledSlots) ? scheduledSlots : [];
+    const requestedSlotTimesRaw = Array.isArray(scheduledSlots) ? scheduledSlots : [];
+    const requestedSlotTimes = requestedSlotTimesRaw
+        .map((s) => normalizeToDoctorGridIso(String(s), SLOT_DURATION_MINUTES))
+        .filter(Boolean);
     if (requestedSlotTimes.length === 0) {
         const err = new Error("At least one scheduled slot is required");
         err.statusCode = 400;
@@ -258,229 +467,23 @@ export async function bookPatientRequest(body) {
         createdAt: now,
     });
     const trustedPriority = computedPriority;
-
-    const bumpMessage = "A critical case required your time slot. Please reschedule.";
-    const appointmentsToBump = new Map();
-    const orphanSessionsToBump = new Map();
-    const requestedSorted = [...requestedSlotTimes].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    let promotedSlot = null;
-
-    const apptSnap = await db
-        .collection("appointments")
-        .where("doctorId", "==", doctorId)
-        .where("status", "in", ACTIVE_APPOINTMENT_STATUSES)
-        .get();
-
-    apptSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        const intersection = appointmentSlotIntersections(requestedSlotTimes, data.scheduledSlots || []);
-        if (intersection.length > 0) {
-            appointmentsToBump.set(docSnap.id, {
-                id: docSnap.id,
-                ref: docSnap.ref,
-                data,
-                collisionSlots: intersection,
-                existingPriority: numericPriorityFromFirestore(data),
-            });
-        }
-    });
-
-    const sessSnap = await db
-        .collection("sessions")
-        .where("practitioner_id", "==", doctorId)
-        .where("status", "in", BLOCKING_SESSION_STATUSES)
-        .get();
-
-    sessSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        const dt = data.datetime || data.scheduled_date;
-        if (!dt) return;
-        if (String(data.patient_id) === String(patientId)) return;
-        if (!requestedSlotConflictsWithTime(requestedSlotTimes, dt)) return;
-
-        const apptId = data.appointment_id;
-        if (apptId) {
-            if (!appointmentsToBump.has(apptId)) {
-                appointmentsToBump.set(apptId, {
-                    id: apptId,
-                    ref: db.collection("appointments").doc(apptId),
-                    data: null,
-                    collisionSlots: [dt],
-                    existingPriority: numericPriorityFromFirestore(data),
-                    fromSession: docSnap.id,
-                });
-            }
-        } else {
-            orphanSessionsToBump.set(docSnap.id, {
-                id: docSnap.id,
-                ref: docSnap.ref,
-                data,
-                existingPriority: numericPriorityFromFirestore(data),
-            });
-        }
-    });
-
-    // Priority preemption: if incoming high-priority request asks for later slots,
-    // promote it to the earliest lower-priority upcoming slot for this doctor.
-    const requestedFirst = requestedSorted[0];
-    if (requestedFirst) {
-        const candidates = [];
-        sessSnap.forEach((docSnap) => {
-            const data = docSnap.data();
-            const dt = data.datetime || data.scheduled_date;
-            if (!dt) return;
-            if (String(data.patient_id) === String(patientId)) return;
-            if (!BLOCKING_SESSION_STATUSES.includes(String(data.status))) return;
-            // Preempt only when incoming request is currently later than this lower-priority slot.
-            if (new Date(dt).getTime() >= new Date(requestedFirst).getTime()) return;
-            const existingPriority = numericPriorityFromFirestore(data);
-            if (trustedPriority <= existingPriority) return;
-            candidates.push({ id: docSnap.id, data, existingPriority, dt });
-        });
-        candidates.sort((a, b) => new Date(a.dt).getTime() - new Date(b.dt).getTime());
-        const chosen = candidates[0];
-        if (chosen) {
-            promotedSlot = chosen.dt;
-            const apptId = chosen.data.appointment_id;
-            if (apptId) {
-                if (!appointmentsToBump.has(apptId)) {
-                    appointmentsToBump.set(apptId, {
-                        id: apptId,
-                        ref: db.collection("appointments").doc(apptId),
-                        data: null,
-                        collisionSlots: [chosen.dt],
-                        existingPriority: chosen.existingPriority,
-                        fromSession: chosen.id,
-                    });
-                }
-            } else {
-                orphanSessionsToBump.set(chosen.id, {
-                    id: chosen.id,
-                    ref: db.collection("sessions").doc(chosen.id),
-                    data: chosen.data,
-                    existingPriority: chosen.existingPriority,
-                });
-            }
-        }
-    }
-
-    async function promoteSessionToOrphanIfNeeded(entry) {
-        if (!entry.fromSession) return;
-        const sd = await db.collection("sessions").doc(entry.fromSession).get();
-        if (!sd.exists) return;
-        const d = sd.data();
-        orphanSessionsToBump.set(sd.id, {
-            id: sd.id,
-            ref: sd.ref,
-            data: d,
-            existingPriority: numericPriorityFromFirestore(d),
-        });
-    }
-
-    for (const [apptId, entry] of [...appointmentsToBump.entries()]) {
-        if (entry.data != null) continue;
-        const apptDoc = await db.collection("appointments").doc(apptId).get();
-        if (!apptDoc.exists) {
-            await promoteSessionToOrphanIfNeeded(entry);
-            appointmentsToBump.delete(apptId);
-            continue;
-        }
-        const ad = apptDoc.data();
-        if (!ACTIVE_APPOINTMENT_STATUSES.includes(ad.status)) {
-            await promoteSessionToOrphanIfNeeded(entry);
-            appointmentsToBump.delete(apptId);
-            continue;
-        }
-        entry.data = ad;
-        entry.existingPriority = numericPriorityFromFirestore(ad);
-        const fromApptSlots = appointmentSlotIntersections(requestedSlotTimes, ad.scheduledSlots || []);
-        if (fromApptSlots.length > 0) {
-            entry.collisionSlots = fromApptSlots;
-        }
-    }
-
-    for (const [, slot] of appointmentsToBump) {
-        if (trustedPriority <= slot.existingPriority) {
-            const err = new Error(
-                "Time slot collision detected with a higher or equal priority patient."
-            );
-            err.statusCode = 409;
-            err.collidedSlots = slot.collisionSlots || [];
-            throw err;
-        }
-    }
-    for (const [, slot] of orphanSessionsToBump) {
-        if (trustedPriority <= slot.existingPriority) {
-            const err = new Error(
-                "Time slot collision detected with a higher or equal priority patient."
-            );
-            err.statusCode = 409;
-            err.collidedSlots = [slot.data?.datetime];
-            throw err;
-        }
-    }
-
-    const bumpedAppointments = [];
-    const batch = db.batch();
-    const durationMinutesForNewSession = String(therapy).includes("Vamana") ? 120 : 90;
-
-    for (const [, slot] of appointmentsToBump) {
-        const freeIsos = slot.data?.scheduledSlots?.length
-            ? slot.data.scheduledSlots
-            : slot.collisionSlots || [];
-        const delDuration =
-            String(slot.data?.therapy || therapy).includes("Vamana") ? 120 : 90;
-        slotBlocks.addDeletesForDoctorSlots(batch, db, doctorId, freeIsos, delDuration);
-    }
-    for (const [, slot] of orphanSessionsToBump) {
-        const dt = slot.data?.datetime || slot.data?.scheduled_date;
-        if (!dt) continue;
-        const parsed = Number(slot.data?.duration_minutes ?? slot.data?.durationMinutes);
-        const delDuration =
-            Number.isFinite(parsed) && parsed > 0
-                ? parsed
-                : String(slot.data?.therapy || therapy).includes("Vamana")
-                  ? 120
-                  : 90;
-        slotBlocks.addDeletesForDoctorSlots(batch, db, doctorId, [dt], delDuration);
-    }
-
-    for (const [apptId, slot] of appointmentsToBump) {
-        batch.update(slot.ref, {
-            status: "reschedule_required",
-            bumpedByPriority: true,
-            bumpMessage,
-            bumpedAt: now,
-        });
-        bumpedAppointments.push({ ...slot.data, id: apptId, patientEmail: slot.data?.patientEmail });
-
-        const related = await db.collection("sessions").where("appointment_id", "==", apptId).get();
-        related.forEach((sd) => {
-            batch.update(sd.ref, {
-                status: "reschedule_requested",
-                bumpedByPriority: true,
-                bumpMessage,
-                doctor_approval: "pending",
-            });
-        });
-    }
-
-    for (const [, slot] of orphanSessionsToBump) {
-        batch.update(slot.ref, {
-            status: "reschedule_requested",
-            bumpedByPriority: true,
-            bumpMessage,
-            doctor_approval: "pending",
-        });
-    }
-
+    // SINGLE SOURCE OF TRUTH: day-wise priority queue rebuild.
+    // We create ONE appointment, then create sessions via rebuildDoctorDayQueue per intended day.
     const appointmentRef = db.collection("appointments").doc();
-    const finalRequestedSlotTimes = promotedSlot
-        ? [promotedSlot, ...requestedSorted.slice(1)]
-        : requestedSlotTimes;
-    const normalizedFinalSlots = Array.from(new Set(finalRequestedSlotTimes))
-        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    const appointmentDoc = {
+
+    // Compute intended days from requested slots (already spacing-driven by /scheduling/slots).
+    const intended = requestedSlotTimes
+        .map((iso, idx) => ({ iso, idx, dayKey: istDayKeyFromIso(iso) }))
+        .filter((x) => x.dayKey);
+
+    if (intended.length === 0) {
+        const err = new Error("Unable to compute intended IST day keys for slots");
+        err.statusCode = 400;
+        throw err;
+    }
+
+    // Persist appointment shell first (slots filled after queue rebuild).
+    await appointmentRef.set({
         patientId,
         patientName: patientName || "Patient",
         patientEmail: patientEmail || "",
@@ -488,8 +491,8 @@ export async function bookPatientRequest(body) {
         doctorName: doctorName || "",
         clinicName: clinicName || "",
         therapy,
-        scheduledSlots: normalizedFinalSlots,
-        totalSessions: normalizedFinalSlots.length,
+        scheduledSlots: [],
+        totalSessions: intended.length,
         intakeId: intakeId || null,
         status: "pending",
         priority: trustedPriority,
@@ -498,144 +501,144 @@ export async function bookPatientRequest(body) {
         dosha: dosha || "Unknown",
         reason: reason || "",
         createdAt: now,
-    };
-    batch.set(appointmentRef, appointmentDoc);
+        updatedAt: now,
+    });
 
-    const sessionIds = [];
-    for (let i = 0; i < normalizedFinalSlots.length; i++) {
-        const sessionRef = db.collection("sessions").doc();
-        sessionIds.push(sessionRef.id);
-        slotBlocks.addOccupancyWrite(batch, db, {
-            doctorId,
-            iso: normalizedFinalSlots[i],
-            appointmentId: appointmentRef.id,
-            sessionId: sessionRef.id,
-            patientId,
-            priority: trustedPriority,
-            therapy,
-            durationMinutes: durationMinutesForNewSession,
-            status: "pending_review",
-            updatedAt: now,
-        });
-        batch.set(sessionRef, {
-            patient_id: patientId,
-            patient_name: patientName || "Patient",
-            patient_email: patientEmail || "",
-            practitioner_id: doctorId,
-            doctor_name: doctorName || "",
-            clinic_name: clinicName || "",
-            appointment_id: appointmentRef.id,
-            intake_id: intakeId || null,
-            therapy,
-            datetime: normalizedFinalSlots[i],
-            session_number: i + 1,
-            total_sessions: normalizedFinalSlots.length,
-            duration_minutes: durationMinutesForNewSession,
-            status: "pending_review",
-            doctor_approval: "pending",
-            priority: trustedPriority,
-            totalPriorityScore: trustedPriority,
-            severity_score: Number(severity) || 5,
-            dosha: dosha || "Unknown",
-            reason: reason || "",
-            clinical_summary: clinical_summary || "",
-            precautions_pre: precautions_pre || [],
-            precautions_post: precautions_post || [],
-            feedback_escalation: false,
-            feedback_multiplier: 1.0,
-            created_at: now,
-        });
+    // Group incoming sessions by intended IST day key.
+    const byDay = new Map();
+    for (const it of intended) {
+        const arr = byDay.get(it.dayKey) || [];
+        arr.push(it);
+        byDay.set(it.dayKey, arr);
     }
 
-    await batch.commit();
+    const createdSessionIds = [];
+    const allChanged = [];
 
+    // Process days in chronological order for stability.
+    const dayKeys = [...byDay.keys()].sort();
+    for (const dayKey of dayKeys) {
+        const items = (byDay.get(dayKey) || []).sort((a, b) => a.idx - b.idx);
+        const incomingEntries = items.map((x) => ({
+            appointmentId: appointmentRef.id,
+            priorityScore: trustedPriority,
+            createdAt: now,
+            baseDoc: {
+                patient_id: patientId,
+                patient_name: patientName || "Patient",
+                patient_email: patientEmail || "",
+                practitioner_id: doctorId,
+                doctor_name: doctorName || "",
+                clinic_name: clinicName || "",
+                appointment_id: appointmentRef.id,
+                intake_id: intakeId || null,
+                therapy,
+                duration_minutes: 90,
+                status: "pending_review",
+                doctor_approval: "pending",
+                severity_score: Number(severity) || 5,
+                dosha: dosha || "Unknown",
+                reason: reason || "",
+                clinical_summary: clinical_summary || "",
+                precautions_pre: precautions_pre || [],
+                precautions_post: precautions_post || [],
+                feedback_escalation: false,
+                feedback_multiplier: 1.0,
+                session_number: x.idx + 1,
+                total_sessions: intended.length,
+                created_at: now,
+            },
+        }));
+
+        const res = await rebuildDoctorDayQueue(doctorId, dayKey, incomingEntries);
+        createdSessionIds.push(...(res.createdSessionIds || []));
+        allChanged.push(...(res.changed || []));
+    }
+
+    // Update appointment scheduledSlots from created session docs.
+    // (Source of truth is sessions.datetime; no separate slot state.)
+    const sessSnap2 = await db
+        .collection("sessions")
+        .where("appointment_id", "==", appointmentRef.id)
+        .get();
+    const slots = [];
+    sessSnap2.forEach((d) => {
+        const s = d.data() || {};
+        if (s.datetime) slots.push(String(s.datetime));
+    });
+    slots.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    await appointmentRef.update({
+        scheduledSlots: slots,
+        totalSessions: slots.length,
+        updatedAt: now,
+    });
+
+    // Notify auto-rescheduled patients (diff-based).
     try {
         const notificationsModules = await import("../routes/notifications.js");
         const sendEmail = notificationsModules.sendEmail;
-        if (sendEmail) {
-            for (const bumped of bumpedAppointments) {
-                if (bumped.patientEmail) {
-                    await sendEmail({
-                        to: bumped.patientEmail,
-                        subject: `🌿 Schedule Update Required — ${bumped.therapy || therapy}`,
-                        html: `<p>Namaste ${bumped.patientName},</p>
-                                <p>Due to a higher-priority clinical need, Dr. ${doctorName} has had to reschedule your upcoming <b>${bumped.therapy || therapy}</b> session(s).</p>
-                                <p>Please log in to your dashboard to select new times.</p>`,
-                    });
-                }
-            }
-            for (const [, os] of orphanSessionsToBump) {
-                const em = os.data?.patient_email;
-                if (em) {
-                    await sendEmail({
-                        to: em,
-                        subject: `🌿 Schedule Update Required`,
-                        html: `<p>Namaste ${os.data?.patient_name || "Patient"},</p>
-                                <p>A higher-priority case required your time slot. Please choose a new time in your dashboard.</p>`,
-                    });
-                }
-            }
-        }
-    } catch (bumpErr) {
-        console.error("Bump notifications failed:", bumpErr.message);
-    }
-
-    // In-app bump notifications for affected patients
-    try {
-        for (const bumped of bumpedAppointments) {
-            await createInAppNotification({
-                userId: bumped.patientId || bumped.patient_id,
-                title: "Session reschedule required",
-                body: "A higher-priority case required your slot. Please select a new time.",
-                sender: "system",
-            });
-        }
-        for (const [, os] of orphanSessionsToBump) {
-            await createInAppNotification({
-                userId: os.data?.patient_id,
-                title: "Session reschedule required",
-                body: "A higher-priority case required your slot. Please select a new time.",
-                sender: "system",
-            });
-        }
-    } catch (notifErr) {
-        console.error("In-app bump notifications failed:", notifErr.message);
-    }
-
-    try {
-        const doctorDoc = await db.collection("users").doc(doctorId).get();
-        const doctorEmail = doctorDoc.exists ? doctorDoc.data()?.email : null;
-        if (doctorEmail) {
-            const notificationsModules = await import("../routes/notifications.js");
-            const sendEmail = notificationsModules.sendEmail;
-            if (sendEmail) {
+        for (const c of allChanged) {
+            if (!c.oldDatetime || c.oldDatetime === c.newDatetime) continue;
+            const sSnap = await db.collection("sessions").doc(c.sessionId).get();
+            if (!sSnap.exists) continue;
+            const s = sSnap.data() || {};
+            const pEmail = s.patient_email || null;
+            const pId = s.patient_id || null;
+            const pName = s.patient_name || "Patient";
+            const th = s.therapy || "session";
+            if (sendEmail && pEmail) {
                 await sendEmail({
-                    to: doctorEmail,
-                    subject: `🌿 New Booking Request — ${patientName}`,
-                    html: `<p>Namaste Dr. ${doctorName},</p>
-                            <p><b>${patientName}</b> has requested <b>${therapy}</b>.</p>
-                            <p><b>Computed priority (server):</b> ${trustedPriority} | <b>Sessions:</b> ${requestedSlotTimes.length}</p>
-                            <p>Please review and approve or decline from your dashboard.</p>`,
+                    to: pEmail,
+                    subject: `🌿 Session Auto-Rescheduled — ${th}`,
+                    html: `<p>Namaste ${pName},</p>
+                          <p>Your <b>${th}</b> session was moved due to a higher-priority case.</p>
+                          <p><b>Previous:</b> ${new Date(c.oldDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>
+                          <p><b>New:</b> ${new Date(c.newDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</p>
+                          <p>If this does not work for you, you can request a reschedule in the app.</p>`,
+                });
+            }
+            if (pId) {
+                await createInAppNotification({
+                    userId: pId,
+                    title: "Session auto-rescheduled",
+                    body: `Your ${th} session moved to ${new Date(c.newDatetime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`,
+                    sender: "system",
                 });
             }
         }
-    } catch (notifErr) {
-        console.error("Doctor notification failed:", notifErr.message);
+    } catch (e) {
+        console.error("Auto-reschedule notifications failed:", e.message);
     }
+
+    // Doctor notification for new booking
     try {
+        const doctorDoc = await db.collection("users").doc(doctorId).get();
+        const doctorEmail = doctorDoc.exists ? doctorDoc.data()?.email : null;
+        const notificationsModules = await import("../routes/notifications.js");
+        const sendEmail = notificationsModules.sendEmail;
+        if (sendEmail && doctorEmail) {
+            await sendEmail({
+                to: doctorEmail,
+                subject: `🌿 New Booking Request — ${patientName}`,
+                html: `<p>Namaste Dr. ${doctorName || "Practitioner"},</p>
+                       <p><b>${patientName || "Patient"}</b> requested <b>${therapy}</b>.</p>
+                       <p><b>Priority (server):</b> ${trustedPriority} | <b>Sessions:</b> ${intended.length}</p>
+                       <p>Please review and approve/decline from your dashboard.</p>`,
+            });
+        }
         await createInAppNotification({
             userId: doctorId,
             title: "New booking request",
-            body: `${patientName || "Patient"} requested ${therapy}. Priority ${trustedPriority}.`,
+            body: `${patientName || "Patient"} requested ${therapy}.`,
             sender: "patient",
         });
     } catch (e) {
-        console.error("Doctor in-app notification failed:", e.message);
+        console.error("Doctor notification failed:", e.message);
     }
 
     return {
         appointmentId: appointmentRef.id,
-        sessionIds,
+        sessionIds: createdSessionIds,
         trustedPriority,
     };
 }

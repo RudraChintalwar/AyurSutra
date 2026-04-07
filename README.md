@@ -14,20 +14,41 @@
 
 ## 📖 About The Project
 
-**AyurSutra** is a comprehensive, full-stack healthcare platform that bridges the gap between traditional Ayurvedic medicine and modern clinical workflows. It offers parallel portals for both **Patients** and **Ayurvedic Practitioners (Doctors)**, integrated with an E-Commerce store and an AI-powered diagnostic and scheduling engine.
-
-### Key Features
-- 🧘 **Dosha Analysis**: Interactive 12-question quiz determining a patient's primary constitution (Vata, Pitta, Kapha) and offering targeted lifestyle advice.
-- 📅 **Smart Panchakarma Scheduling**: Machine-learning backed system to predict needed therapies, prioritize severe cases dynamically queueing them for practitioners.
-- 🛒 **AyurVeda Mart**: Integrated E-Commerce shop to safely purchase authentic Ayurvedic remedies, complete with cart and checkout.
-- 🤖 **Digital Vaidya (AI Chatbot)**: 24/7 Groq-powered conversational agent tuned to provide classical Ayurvedic text-based triage and support.
-- 📊 **Practitioner Portal**: Centralized dashboard for doctors to manage appointments, review patient records, analyze health metrics, and approve treatment plans.
+**AyurSutra** is a comprehensive, full-stack healthcare platform that bridges the gap between traditional Ayurvedic medicine and modern clinical workflows. In the traditional setting, diagnosing doshas and tracking holistic recovery is a fragmented, heavily manual process. AyurSutra solves this by offering interconnected portals for **Patients** and **Ayurvedic Practitioners (Vaidyas)**, integrated with an AI-powered diagnostic engine, machine-learning-backed Panchakarma scheduling, and an E-Commerce pharmacy.
 
 ---
 
-## 🏗️ Architecture
+## 🌟 Core Application Features
 
-The project is structured as a robust monorepo to ensure seamless collaboration between the frontend UI, backend business logic, and the machine learning model.
+The project is packed with advanced healthcare subsystems:
+
+### 🧘 Patient Portal & Intelligences
+- **Dynamic Dosha Analysis:** An interactive diagnostic quiz that determines a patient's core biological constitution (Vata, Pitta, Kapha) and adjusts the dashboard's holistic recommendations accordingly.
+- **AI-Powered Report Analyzer:** Securely upload standard medical reports. A specialized NLP engine parses the blood/health metrics, highlighting anomalies and translating them into Ayurvedic diagnostic implications (e.g., identifying aggravated Pitta).
+- **Personalized Diet Planner:** Recommends highly personalized nutritional frameworks (*Ahara*) and restriction regimens based on the user's Dosha status and current symptom severity.
+- **Digital Pulse Monitor:** An innovative concept module estimating conventional *Nadi Pariksha* (Pulse assessment). It logs specific physiological variations to visualize changes in baseline cardiovascular health.
+- **Authentic Medicine Verifier:** Allows patients to authenticate Ayurvedic products by cross-referencing batch numbers to ensure medicinal safety and formula integrity.
+
+### 📅 Smart Panchakarma Scheduling (ML)
+- **Neural Network Triage:** A Machine-Learning backed system built on **2,00,000 (2 Lakh) rows** of historical Ayurvedic interventions. When patients input symptoms asynchronously, the system accurately predicts the most optimal Panchakarma therapy (e.g., *Basti, Vamana, Virechana*).
+
+### 🩺 Practitioner (Doctor) Portal
+- **Priority Access Queue:** Replaces traditional chronological wait-lists. Doctors evaluate a dynamic queue automatically sorted by an LLM-computed severity triage score, focusing on high-risk patients instantly.
+- **Intervention Management:** Centralized dashboard for doctors to review ML predictions, update therapy schedules, and provide continuous feedback on patient physical progress.
+
+### 🛒 AyurVeda E-Mart
+- **E-Commerce Module:** A dedicated, fully functional digital pharmacy for users to safely purchase prescribed, authentic Ayurvedic remedies. Complete with categorized browsing, shopping cart logic, and transparent checkout protocols.
+
+---
+
+## 🏗️ System Architecture
+
+AyurSutra relies on a Microservices-inspired operational structure dividing computational burdens efficiently:
+
+1. **Frontend Presentation (React/Vite & Tailwind):** Highly responsive UI that captures patient interaction. Connects strictly through secure JSON Web Tokens to backend components.
+2. **Business Logic API (Node.js/Express):** Manages essential routing, Groq LLM API integrations (for real-time triage scoring), and direct NoSQL database queries.
+3. **ML Computational Service (FastAPI):** A devoted Python instance separated from standard APIs to host the heavy Artificial Neural Network capable of fast classification predictions on enormous symptom matrices.
+4. **Data Persistence Context (Firebase):** Google Firebase manages both robust User Authentication and real-time Firestore database synchronization linking the Patient and Doctor dashboards concurrently.
 
 ```text
 AyurSutra/
@@ -135,23 +156,12 @@ Visit `http://localhost:5173` in your browser to explore the platform.
 
 To experience the full capability of the system, try the following end-to-end flow:
 
-1. **Patient Registration:** Navigate to the auth page and register a new patient account to initialize your profile in Firestore.
-2. **Dosha Quiz:** Complete the lifestyle questionnaire on your dashboard. Evaluate the personalized Diet Plan and Herbal Remedies rendered based on your score.
-3. **E-Mart Checkout:** Open the AyurVeda Mart, add a remedy (e.g., Brahmi Vati) to the cart, and proceed through the checkout flow.
-4. **Therapy Scheduling:** Under 'Sessions', click 'Book New Session'. Fill in symptoms (e.g., "Severe joints pain"). The frontend will pass this to the **ML-Service**, which will dynamically suggest an Ayurvedic therapy (e.g., *Basti* or *Vamana*).
-5. **Doctor Review:** Sign out, and register as a Practitioner (use the verification code `AyurSutraDoc7898`). View your priority queue to see the patient you just booked, sorted by the Groq LLM severity score.
+1. **Patient Registration:** Navigate to the auth page and register a new patient account to initialize your profile (or use the *Test Patient* fast bypass button natively built into login).
+2. **Diagnostic Features:** Try uploading a mock blood report in the **Report Analyzer**, run the **Pulse Monitor** logic, and view the personalized **Diet Plan** generated based on Dosha parameters.
+3. **E-Mart Checkout:** Open the AyurVeda Mart, add a remedy (e.g., Brahmi Vati) to the cart, check authenticity via **Medicine Verifier**, and interact with the checkout flow.
+4. **Therapy Scheduling:** Click 'Book New Session'. Fill in symptoms (e.g., "Severe joints pain"). The frontend will pass this to the **ML-Service**, dynamically predicting an Ayurvedic therapy (e.g., *Basti* or *Vamana*).
+5. **Doctor Review:** Sign out, and register/login as a Practitioner (or use the *Test Doctor* fast bypass). View your priority queue to see the patient you just booked, systematically sorted by the AI severity score!
 
 ---
 
-## 🤝 Contributing
-
-We welcome community contributions. To contribute:
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-*Built with ❤️ for SIH*
+*Built with ❤️ bridging traditional medicine with futuristic computation.*

@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Server-only (Admin SDK): OAuth state & refresh tokens
+    match /calendarOAuthStates/{docId} {
+      allow read, write: if false;
+    }
+
+    // Users collection:
+    // - Any authenticated user can read public doctor profiles (for discovery).
+    // - Users can read/write their own profile.
+    // - Doctors can read all user docs (care workflows).
+    match /users/{userId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        (resource != null && 'role' in resource.data && resource.data.role == 'doctor') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor')
+      );
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      match /integrations/{docId} {
+        allow read, write: if false;
+      }
+    }
+    
+    // Sessions: reads from app; all writes via Admin SDK / API only.
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null && (
+        resource.data.patient_id == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+      );
+      allow create, update, delete: if false;
+    }
+
+    // Slot occupancy index — server only (mirrors booking state).
+    match /schedule_slot_blocks/{blockId} {
+      allow read, write: if false;
+    }
+    
+    // Patients collection: doctors read/write, patients read/write own profile
+    match /patients/{patientId} {
+      allow read, write: if request.auth != null && (
+        request.auth.uid == patientId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+      );
+    }
+    
+    // Treatments collection: read-only for authenticated users
+    match /treatments/{treatmentId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only admin/backend can write treatments
+    }
+
+    // Appointments collection: patients see own, doctors see assigned
+    match /appointments/{appointmentId} {
+      allow read: if request.auth != null && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+      );
+      // Server only: appointments are created/updated by scheduling engine (Admin SDK).
+      allow create, update, delete: if false;
+    }
+
+    // E-Mart products: all authenticated users can read, only admin can mutate.
+    match /products/{productId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+        );
+    }
+
+    // E-Mart orders: customer can read own orders, admin can read/write all.
+    match /orders/{orderId} {
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    // Doctor availability slots subcollection
+    match /doctors/{doctorId}/slots/{slotId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == doctorId;
+    }
+
+    // Intake submissions: patients CRUD own, doctors read all
+    match /intakeSubmissions/{submissionId} {
+      allow read: if request.auth != null && (
+        resource.data.patientId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+      );
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        resource.data.patientId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+      );
+      allow delete: if false;
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

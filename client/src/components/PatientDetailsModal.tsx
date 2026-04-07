@@ -67,9 +67,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                       <Badge className={`${getDoshaBadge(patient.dosha)} px-3 py-1`}>
                         {patient.dosha || 'Unknown'} Constitution
                       </Badge>
-                      <Badge className="priority-badge-high">
-                        Priority: {patient.llm_recommendation?.priority_score || 'N/A'}
-                      </Badge>
+                      {/* Priority score is intentionally hidden from patients. */}
                     </div>
                   </div>
                   
@@ -135,7 +133,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                   </h3>
                   <div className="space-y-2 text-sm">
                     <div><strong>Chief Complaint:</strong> {patient.reason_for_visit || 'None specified'}</div>
-                    <div><strong>Priority Score:</strong> {patient.llm_recommendation?.priority_score || 'N/A'}/100</div>
+                    {/* Priority score is intentionally hidden from patients. */}
                     <div><strong>Current Status:</strong> Active Treatment</div>
                     <div><strong>Last Visit:</strong> N/A</div>
                   </div>

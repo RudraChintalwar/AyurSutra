@@ -348,7 +348,7 @@ const PatientSettings = () => {
 
               <div className="p-4 bg-green-100 rounded-lg text-center">
                 <div className="text-lg font-bold text-green-600">
-                  {currentPatient?.llm_recommendation?.priority_score || currentPatient?.healthScore || 'N/A'}
+                  {currentPatient?.healthScore || 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">{language === "hi" ? "स्वास्थ्य स्कोर" : "Health Score"}</div>
               </div>
