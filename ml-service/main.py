@@ -4,6 +4,8 @@ FastAPI server that serves a trained Neural Network model
 for predicting appropriate Panchakarma therapies.
 """
 import os
+import io
+import base64
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,30 +54,30 @@ def load_models():
 
         if os.path.exists(model_path):
             model = tf.keras.models.load_model(model_path)
-            print(f"✅ Loaded neural network model from {model_path}")
+            print(f"[OK] Loaded neural network model from {model_path}")
         else:
-            print(f"⚠️  Model file not found at {model_path}")
+            print(f"[WARN] Model file not found at {model_path}")
 
         embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        print("✅ Loaded SentenceTransformer embedder")
+        print("[OK] Loaded SentenceTransformer embedder")
 
         if os.path.exists(mlb_path):
             mlb = joblib.load(mlb_path)
-            print(f"✅ Loaded label binarizer from {mlb_path}")
+            print(f"[OK] Loaded label binarizer from {mlb_path}")
         else:
-            print(f"⚠️  Label binarizer not found at {mlb_path}")
+            print(f"[WARN] Label binarizer not found at {mlb_path}")
 
         if os.path.exists(threshold_path):
             threshold = joblib.load(threshold_path)
-            print(f"✅ Loaded optimal threshold: {threshold}")
+            print(f"[OK] Loaded optimal threshold: {threshold}")
         else:
-            print("ℹ️  Using default threshold: 0.5")
+            print("[INFO] Using default threshold: 0.5")
 
     except ImportError as e:
-        print(f"⚠️  ML dependencies not installed: {e}")
+        print(f"[WARN] ML dependencies not installed: {e}")
         print("   The service will run in fallback mode.")
     except Exception as e:
-        print(f"⚠️  Error loading models: {e}")
+        print(f"[WARN] Error loading models: {e}")
 
     # Load RF models
     try:
@@ -85,19 +87,19 @@ def load_models():
 
         if os.path.exists(sev_path):
             severity_clf = joblib.load(sev_path)
-            print(f"✅ Loaded RF Severity Classifier")
+            print(f"[OK] Loaded RF Severity Classifier")
         else:
-            print(f"⚠️  RF Severity Classifier not found (run train_models.py first)")
+            print(f"[WARN] RF Severity Classifier not found (run train_models.py first)")
 
         if os.path.exists(sess_path):
             session_reg = joblib.load(sess_path)
-            print(f"✅ Loaded RF Session Regressor")
+            print(f"[OK] Loaded RF Session Regressor")
 
         if os.path.exists(dur_path):
             duration_reg = joblib.load(dur_path)
-            print(f"✅ Loaded RF Duration Regressor")
+            print(f"[OK] Loaded RF Duration Regressor")
     except Exception as e:
-        print(f"⚠️  Error loading RF models: {e}")
+        print(f"[WARN] Error loading RF models: {e}")
 
     # Load CNN Auth model
     try:
@@ -108,12 +110,12 @@ def load_models():
         if os.path.exists(cnn_path) and os.path.exists(tok_path):
             cnn_auth_model = tf.keras.models.load_model(cnn_path)
             cnn_tokenizer = joblib.load(tok_path)
-            print("✅ Loaded CNN Authentication Model")
+            print("[OK] Loaded CNN Authentication Model")
         else:
             cnn_auth_model, cnn_tokenizer = None, None
-            print("⚠️  CNN Auth Model not found")
+            print("[WARN] CNN Auth Model not found")
     except Exception as e:
-        print(f"⚠️  Error loading CNN Auth Model: {e}")
+        print(f"[WARN] Error loading CNN Auth Model: {e}")
 
 
 # ─── Request/Response models ─────────────────────────────
@@ -334,22 +336,74 @@ async def predict_sessions(request: SessionPredRequest):
 
 
 # ─── OCR + CNN Pharmaceutical Authentication ─────────────
+def run_ocr(image_base64: str) -> str:
+    """
+    Extract text from a base64-encoded image using Tesseract OCR.
+    Returns the extracted text string, or empty string on failure.
+    """
+    try:
+        from PIL import Image
+        import pytesseract
+
+        # Set Tesseract path explicitly for Windows
+        import platform
+        if platform.system() == "Windows":
+            tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+            if os.path.exists(tesseract_path):
+                pytesseract.pytesseract.tesseract_cmd = tesseract_path
+
+        # Strip optional data-URI prefix (e.g. "data:image/png;base64,")
+        if "," in image_base64:
+            image_base64 = image_base64.split(",", 1)[1]
+
+        image_bytes = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Pre-process for better OCR accuracy
+        image = image.convert("RGB")
+
+        # Run Tesseract OCR
+        extracted = pytesseract.image_to_string(image, lang="eng")
+        print(f"[OK] OCR extracted {len(extracted)} characters")
+        return extracted.strip()
+    except ImportError:
+        print("[WARN] pytesseract or Pillow not installed -- OCR unavailable")
+        return ""
+    except Exception as e:
+        print(f"[WARN] OCR failed: {e}")
+        return ""
+
+
 @app.post("/authenticate-medicine")
 async def authenticate_medicine(request: AuthRequest):
     """
     Authenticate Ayurvedic medicine labels.
     Accepts either extracted text or base64 image.
-    Uses keyword matching + confidence scoring (CNN placeholder).
+    When an image is provided, OCR is used to extract label text first.
+    Then the CNN model (or keyword fallback) authenticates the formulation.
     """
+    ocr_text = ""
     analysis_text = request.text.lower() if request.text else ""
 
-    # OCR simulation: if base64 image provided, extract text (placeholder)
-    if request.image_base64 and not request.text:
-        # In production, use Tesseract OCR here
-        analysis_text = "unable to process image - provide extracted text"
+    # ─── OCR: extract text from image ─────────────────────────
+    if request.image_base64:
+        ocr_text = run_ocr(request.image_base64)
+        if ocr_text:
+            # If user also typed text, combine; otherwise use OCR output
+            if analysis_text:
+                analysis_text = f"{analysis_text} {ocr_text.lower()}"
+            else:
+                analysis_text = ocr_text.lower()
+        elif not analysis_text:
+            return {
+                "authenticated": False,
+                "confidence": 0,
+                "reason": "OCR could not extract text from the image. Please try a clearer photo or type the label text manually.",
+                "ocr_text": ""
+            }
 
     if not analysis_text:
-        return {"authenticated": False, "confidence": 0, "reason": "No text provided"}
+        return {"authenticated": False, "confidence": 0, "reason": "No text provided", "ocr_text": ""}
 
     # ─── CNN Model Prediction ─────────────────────────────────
     if 'cnn_auth_model' in globals() and cnn_auth_model is not None and cnn_tokenizer is not None:
@@ -369,37 +423,113 @@ async def authenticate_medicine(request: AuthRequest):
                 "formulation": analysis_text[:50].title(),
                 "ingredient_matches": 0,
                 "manufacturer_verified": is_authentic,
-                "model_used": "CNN Text Classifier"
+                "model_used": "CNN Text Classifier",
+                "ocr_text": ocr_text if ocr_text else None
             }
         except Exception as e:
             print(f"CNN prediction error: {e}")
 
     # ─── Fallback string matching if CNN fails ────────────────
     # Known authentic Ayurvedic formulations database
+    # Each entry has: ingredients (with alternate OCR-friendly spellings), manufacturers, and aliases
     AUTHENTIC_FORMULATIONS = {
-        "triphala": {"ingredients": ["amalaki", "bibhitaki", "haritaki"], "manufacturer": ["dabur", "patanjali", "himalaya", "baidyanath"]},
-        "chyawanprash": {"ingredients": ["amla", "honey", "ghee", "sesame oil"], "manufacturer": ["dabur", "patanjali", "zandu"]},
-        "ashwagandha": {"ingredients": ["withania somnifera", "ashwagandha"], "manufacturer": ["himalaya", "organic india", "patanjali"]},
-        "brahmi": {"ingredients": ["bacopa monnieri", "brahmi"], "manufacturer": ["himalaya", "organic india"]},
-        "trikatu": {"ingredients": ["black pepper", "long pepper", "ginger"], "manufacturer": ["dabur", "baidyanath"]},
-        "guggulu": {"ingredients": ["commiphora wightii", "guggul"], "manufacturer": ["dabur", "baidyanath", "patanjali"]},
+        "triphala": {
+            "aliases": ["triphala", "trifala", "triphla", "tri phala", "triphala churna"],
+            "ingredients": ["amalaki", "bibhitaki", "haritaki", "emblica", "terminalia chebula", "terminalia belerica", "terminalia bellirica", "embilica", "officinalis"],
+            "manufacturer": ["dabur", "patanjali", "himalaya", "baidyanath", "zandu", "sharangdhar", "dhootapapeshwar"]
+        },
+        "chyawanprash": {
+            "aliases": ["chyawanprash", "chyavanprash", "chywanprash", "chyavanprasha"],
+            "ingredients": ["amla", "honey", "ghee", "sesame oil", "ashwagandha", "pippali", "emblica"],
+            "manufacturer": ["dabur", "patanjali", "zandu", "baidyanath"]
+        },
+        "ashwagandha": {
+            "aliases": ["ashwagandha", "ashvagandha", "ashwgandha", "withania"],
+            "ingredients": ["withania somnifera", "ashwagandha", "withania"],
+            "manufacturer": ["himalaya", "organic india", "patanjali", "dabur"]
+        },
+        "brahmi": {
+            "aliases": ["brahmi", "bacopa"],
+            "ingredients": ["bacopa monnieri", "brahmi", "bacopa"],
+            "manufacturer": ["himalaya", "organic india", "dabur", "baidyanath"]
+        },
+        "trikatu": {
+            "aliases": ["trikatu", "tri katu"],
+            "ingredients": ["black pepper", "long pepper", "ginger", "piper nigrum", "piper longum", "zingiber"],
+            "manufacturer": ["dabur", "baidyanath", "patanjali"]
+        },
+        "guggulu": {
+            "aliases": ["guggulu", "guggul", "yograj guggulu", "kaishore guggulu", "triphala guggulu"],
+            "ingredients": ["commiphora wightii", "guggul", "commiphora"],
+            "manufacturer": ["dabur", "baidyanath", "patanjali", "dhootapapeshwar"]
+        },
+        "arjuna": {
+            "aliases": ["arjuna", "arjun"],
+            "ingredients": ["terminalia arjuna", "arjuna"],
+            "manufacturer": ["himalaya", "organic india", "dabur"]
+        },
+        "shatavari": {
+            "aliases": ["shatavari", "shatawari"],
+            "ingredients": ["asparagus racemosus", "shatavari"],
+            "manufacturer": ["himalaya", "organic india", "patanjali"]
+        },
     }
 
-    # Check against known formulations
+    # ─── Fuzzy matching helpers ───────────────────────────────
+    from difflib import SequenceMatcher
+
+    def fuzzy_match(target: str, text: str, threshold: float = 0.65) -> bool:
+        """Check if target approximately appears in text using fuzzy matching."""
+        target = target.lower()
+        text = text.lower()
+
+        # Direct substring check first (fast path)
+        if target in text:
+            return True
+
+        # Split text into words and n-grams, check each against target
+        words = text.split()
+        target_words = target.split()
+        target_len = len(target_words)
+
+        for i in range(len(words)):
+            # Check single words against single-word targets
+            if target_len == 1:
+                for w in words:
+                    ratio = SequenceMatcher(None, target, w).ratio()
+                    if ratio >= threshold:
+                        return True
+            # Check multi-word n-grams against multi-word targets
+            chunk = " ".join(words[i:i + target_len])
+            ratio = SequenceMatcher(None, target, chunk).ratio()
+            if ratio >= threshold:
+                return True
+
+        return False
+
+    # Check against known formulations using fuzzy matching
     matched_formulation = None
     ingredient_matches = 0
     manufacturer_match = False
 
     for name, info in AUTHENTIC_FORMULATIONS.items():
-        if name in analysis_text:
-            matched_formulation = name
-            for ing in info["ingredients"]:
-                if ing in analysis_text:
-                    ingredient_matches += 1
-            for mfg in info["manufacturer"]:
-                if mfg in analysis_text:
-                    manufacturer_match = True
-            break
+        # Check formulation name AND aliases with fuzzy matching
+        found = False
+        for alias in info.get("aliases", [name]):
+            if fuzzy_match(alias, analysis_text, threshold=0.7):
+                found = True
+                break
+        if not found:
+            continue
+
+        matched_formulation = name
+        for ing in info["ingredients"]:
+            if fuzzy_match(ing, analysis_text, threshold=0.65):
+                ingredient_matches += 1
+        for mfg in info["manufacturer"]:
+            if fuzzy_match(mfg, analysis_text, threshold=0.75):
+                manufacturer_match = True
+        break
 
     if matched_formulation:
         total_ingredients = len(AUTHENTIC_FORMULATIONS[matched_formulation]["ingredients"])
@@ -413,6 +543,7 @@ async def authenticate_medicine(request: AuthRequest):
             "ingredient_matches": ingredient_matches,
             "manufacturer_verified": manufacturer_match,
             "classification": "Authentic" if confidence >= 0.6 else "Suspicious",
+            "ocr_text": ocr_text if ocr_text else None
         }
     else:
         return {
@@ -421,6 +552,7 @@ async def authenticate_medicine(request: AuthRequest):
             "formulation": None,
             "reason": "Formulation not found in database",
             "classification": "Unknown",
+            "ocr_text": ocr_text if ocr_text else None
         }
 
 
